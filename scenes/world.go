@@ -38,15 +38,18 @@ func (ps *PlatformerScene) Update() {
 	}
 }
 
-// checkGameOver returns true if the player entity has been removed (after death sequence completes)
+// checkGameOver returns true if all player entities have been removed (after death sequence completes)
 func (ps *PlatformerScene) checkGameOver() bool {
 	if ps.ecs == nil {
 		return false
 	}
 
-	// Player entity is removed when game over delay expires
-	_, ok := tags.Player.First(ps.ecs.World)
-	return !ok
+	// Game over when no players remain
+	playerCount := 0
+	tags.Player.Each(ps.ecs.World, func(entry *donburi.Entry) {
+		playerCount++
+	})
+	return playerCount == 0
 }
 
 func (ps *PlatformerScene) Draw(screen *ebiten.Image) {
@@ -148,30 +151,50 @@ func (ps *PlatformerScene) configure() {
 		factory2.CreateMessagePoint(ps.ecs, msg.X, msg.Y, msg.MessageID)
 	}
 
-	// Determine player spawn position (use default spawn point)
+	// Spawn players at available spawn points
 	if len(levelData.CurrentLevel.PlayerSpawns) <= 0 {
 		err := errors.New("no player spawn points defined in Map")
 		panic(err)
 	}
-	spawn := levelData.CurrentLevel.PlayerSpawns[0]
-	playerSpawnX := spawn.X
-	playerSpawnY := spawn.Y
 
-	// Create the player at the determined position with keyboard zone 0 (WASD)
-	inputCfg := factory2.PlayerInputConfig{
-		PlayerIndex:  0,
-		GamepadID:    nil,
-		KeyboardZone: components.KeyboardZoneWASD,
+	// Define input configurations for each player slot
+	// Player 0: WASD keyboard zone
+	// Player 1: Arrow keyboard zone
+	// Players 2-3: Gamepads (when connected) or additional keyboard zones
+	playerInputConfigs := []factory2.PlayerInputConfig{
+		{PlayerIndex: 0, GamepadID: nil, KeyboardZone: components.KeyboardZoneWASD},
+		{PlayerIndex: 1, GamepadID: nil, KeyboardZone: components.KeyboardZoneArrows},
 	}
-	player := factory2.CreatePlayer(ps.ecs, playerSpawnX, playerSpawnY, inputCfg)
-	playerObj := components.Object.Get(player)
-	space.Add(playerObj.Object)
 
-	// Snap camera to player start position to prevent panning from (0,0)
+	numPlayers := len(playerInputConfigs)
+	numSpawns := len(levelData.CurrentLevel.PlayerSpawns)
+
+	var firstPlayerSpawn assets.PlayerSpawn
+	for i := 0; i < numPlayers; i++ {
+		// Use spawn point if available, otherwise offset from first spawn
+		var spawnX, spawnY float64
+		if i < numSpawns {
+			spawn := levelData.CurrentLevel.PlayerSpawns[i]
+			spawnX, spawnY = spawn.X, spawn.Y
+		} else {
+			// Offset from first spawn point (30 pixels apart horizontally)
+			spawn := levelData.CurrentLevel.PlayerSpawns[0]
+			spawnX = spawn.X + float64(i)*30.0
+			spawnY = spawn.Y
+		}
+		if i == 0 {
+			firstPlayerSpawn = levelData.CurrentLevel.PlayerSpawns[0]
+		}
+		player := factory2.CreatePlayer(ps.ecs, spawnX, spawnY, playerInputConfigs[i])
+		playerObj := components.Object.Get(player)
+		space.Add(playerObj.Object)
+	}
+
+	// Snap camera to first player's start position to prevent panning from (0,0)
 	if cameraEntry, ok := components.Camera.First(ps.ecs.World); ok {
 		camera := components.Camera.Get(cameraEntry)
-		camera.Position.X = playerSpawnX
-		camera.Position.Y = playerSpawnY
+		camera.Position.X = firstPlayerSpawn.X
+		camera.Position.Y = firstPlayerSpawn.Y
 	}
 
 	// Spawn enemies for the current level

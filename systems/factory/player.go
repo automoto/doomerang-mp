@@ -27,6 +27,7 @@ func CreatePlayer(ecs *ecs.ECS, x, y float64, inputCfg PlayerInputConfig) *donbu
 	obj.AddTags("character", tags.ResolvPlayer)
 	obj.Data = player
 	components.Player.SetValue(player, components.PlayerData{
+		PlayerIndex:  inputCfg.PlayerIndex,
 		Direction:    components.Vector{X: 1, Y: 0},
 		ComboCounter: 0,
 		InvulnFrames: 0,

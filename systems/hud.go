@@ -5,6 +5,7 @@ import (
 
 	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/yohamta/donburi"
@@ -12,41 +13,70 @@ import (
 )
 
 const (
-	hudBarWidth  = 130
-	hudBarHeight = 13
+	hudBarWidth  = 100
+	hudBarHeight = 10
 	hudMargin    = 10
-	livesMargin  = 5
+	livesMargin  = 3
 )
+
+// Player colors for HUD differentiation
+var playerColors = []color.RGBA{
+	{40, 220, 40, 255},  // P1: Green
+	{40, 120, 220, 255}, // P2: Blue
+	{220, 180, 40, 255}, // P3: Yellow
+	{220, 80, 40, 255},  // P4: Orange
+}
 
 var heartIcon *ebiten.Image
 var hudDrawOp = &ebiten.DrawImageOptions{}
 
-// DrawHUD renders the player's health bar and lives counter in the top-left corner.
+// DrawHUD renders health bars and lives for all players.
+// Players are positioned in corners based on their index:
+// P1: top-left, P2: top-right, P3: bottom-left, P4: bottom-right
 func DrawHUD(ecs *ecs.ECS, screen *ebiten.Image) {
-	playerEntry, ok := components.Player.First(ecs.World)
-	if !ok {
-		return
-	}
-	hp := components.Health.Get(playerEntry)
+	screenWidth := float32(cfg.C.Width)
+	screenHeight := float32(cfg.C.Height)
 
-	// Background (dark gray)
-	vector.DrawFilledRect(screen,
-		float32(hudMargin), float32(hudMargin),
-		float32(hudBarWidth), float32(hudBarHeight),
-		color.RGBA{40, 40, 40, 255}, false)
+	components.Player.Each(ecs.World, func(playerEntry *donburi.Entry) {
+		playerData := components.Player.Get(playerEntry)
+		hp := components.Health.Get(playerEntry)
+		playerIndex := playerData.PlayerIndex
 
-	// Current HP (green)
-	ratio := float32(hp.Current) / float32(hp.Max)
-	vector.DrawFilledRect(screen,
-		float32(hudMargin), float32(hudMargin),
-		float32(hudBarWidth)*ratio, float32(hudBarHeight),
-		color.RGBA{40, 220, 40, 255}, false)
+		// Calculate position based on player index
+		var x, y float32
+		switch playerIndex {
+		case 0: // Top-left
+			x, y = hudMargin, hudMargin
+		case 1: // Top-right
+			x, y = screenWidth-hudBarWidth-hudMargin, hudMargin
+		case 2: // Bottom-left
+			x, y = hudMargin, screenHeight-hudBarHeight-hudMargin-20
+		case 3: // Bottom-right
+			x, y = screenWidth-hudBarWidth-hudMargin, screenHeight-hudBarHeight-hudMargin-20
+		default:
+			return
+		}
 
-	// Draw lives counter
-	drawLives(playerEntry, screen)
+		// Get player color
+		playerColor := playerColors[playerIndex%len(playerColors)]
+
+		// Background (dark gray)
+		vector.DrawFilledRect(screen, x, y,
+			hudBarWidth, hudBarHeight,
+			color.RGBA{40, 40, 40, 255}, false)
+
+		// Current HP (player color)
+		ratio := float32(hp.Current) / float32(hp.Max)
+		vector.DrawFilledRect(screen, x, y,
+			hudBarWidth*ratio, hudBarHeight,
+			playerColor, false)
+
+		// Draw lives counter
+		drawPlayerLives(playerEntry, screen, x, y+hudBarHeight+livesMargin, playerIndex)
+	})
 }
 
-func drawLives(playerEntry *donburi.Entry, screen *ebiten.Image) {
+func drawPlayerLives(playerEntry *donburi.Entry, screen *ebiten.Image, startX, startY float32, playerIndex int) {
 	lives := components.Lives.Get(playerEntry)
 
 	// Lazy load heart icon
@@ -55,11 +85,19 @@ func drawLives(playerEntry *donburi.Entry, screen *ebiten.Image) {
 	}
 
 	heartWidth := heartIcon.Bounds().Dx()
-	livesY := float64(hudMargin + hudBarHeight + livesMargin)
+
+	// For right-side players, draw hearts from right to left
+	rightSide := playerIndex == 1 || playerIndex == 3
 
 	for i := 0; i < lives.Lives; i++ {
 		hudDrawOp.GeoM.Reset()
-		hudDrawOp.GeoM.Translate(float64(hudMargin)+float64(i)*float64(heartWidth+livesMargin), livesY)
+		var heartX float64
+		if rightSide {
+			heartX = float64(startX) + float64(hudBarWidth) - float64((i+1)*(heartWidth+livesMargin))
+		} else {
+			heartX = float64(startX) + float64(i*(heartWidth+livesMargin))
+		}
+		hudDrawOp.GeoM.Translate(heartX, float64(startY))
 		screen.DrawImage(heartIcon, hudDrawOp)
 	}
 }

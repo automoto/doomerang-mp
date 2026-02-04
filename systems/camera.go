@@ -17,14 +17,6 @@ func UpdateCamera(e *ecs.ECS) {
 	// Process screen shake
 	updateScreenShake(cameraEntry, camera)
 
-	playerEntry, ok := tags.Player.First(e.World)
-	if !ok {
-		return // no player (could be dead), skip camera update
-	}
-	playerObject := components.Object.Get(playerEntry)
-	playerData := components.Player.Get(playerEntry)
-	physics := components.Physics.Get(playerEntry)
-
 	// Get level dimensions for camera bounds
 	levelEntry, ok := components.Level.First(e.World)
 	if !ok {
@@ -35,15 +27,43 @@ func UpdateCamera(e *ecs.ECS) {
 		return
 	}
 
-	// Only update look-ahead when player is moving - freeze offset when idle
-	if math.Abs(physics.SpeedX) > config.Camera.LookAheadSpeedThreshold {
-		targetLookAhead := playerData.Direction.X * config.Camera.LookAheadDistanceX * config.Camera.LookAheadMovingScale
-		camera.LookAheadX += (targetLookAhead - camera.LookAheadX) * config.Camera.LookAheadSmoothing
+	// Gather all player positions
+	var sumX, sumY float64
+	var playerCount int
+	var singlePlayerPhysics *components.PhysicsData
+	var singlePlayerData *components.PlayerData
+
+	tags.Player.Each(e.World, func(playerEntry *donburi.Entry) {
+		playerObject := components.Object.Get(playerEntry)
+		sumX += playerObject.X + playerObject.W/2
+		sumY += playerObject.Y + playerObject.H/2
+		playerCount++
+		// Keep reference to first player for look-ahead (only used in single-player mode)
+		if playerCount == 1 {
+			singlePlayerPhysics = components.Physics.Get(playerEntry)
+			singlePlayerData = components.Player.Get(playerEntry)
+		}
+	})
+
+	if playerCount == 0 {
+		return // no players (could be dead), skip camera update
 	}
 
-	// Calculate target camera position (following the player with look-ahead)
-	targetX := playerObject.X + camera.LookAheadX
-	targetY := playerObject.Y
+	// Calculate center point of all players
+	centerX := sumX / float64(playerCount)
+	centerY := sumY / float64(playerCount)
+
+	// Only apply look-ahead in single-player mode
+	if playerCount == 1 && singlePlayerPhysics != nil && singlePlayerData != nil {
+		if math.Abs(singlePlayerPhysics.SpeedX) > config.Camera.LookAheadSpeedThreshold {
+			targetLookAhead := singlePlayerData.Direction.X * config.Camera.LookAheadDistanceX * config.Camera.LookAheadMovingScale
+			camera.LookAheadX += (targetLookAhead - camera.LookAheadX) * config.Camera.LookAheadSmoothing
+		}
+		centerX += camera.LookAheadX
+	} else {
+		// Decay look-ahead in multiplayer mode
+		camera.LookAheadX *= 0.9
+	}
 
 	// Calculate camera bounds based on screen and level dimensions
 	screenWidth := float64(config.C.Width)
@@ -58,8 +78,8 @@ func UpdateCamera(e *ecs.ECS) {
 	maxCameraY := levelHeight - screenHeight/2
 
 	// Constrain target position to camera bounds
-	targetX = math.Max(minCameraX, math.Min(maxCameraX, targetX))
-	targetY = math.Max(minCameraY, math.Min(maxCameraY, targetY))
+	targetX := math.Max(minCameraX, math.Min(maxCameraX, centerX))
+	targetY := math.Max(minCameraY, math.Min(maxCameraY, centerY))
 
 	// Center the camera on the constrained target position, with some smoothing.
 	camera.Position.X += (targetX - camera.Position.X) * config.Camera.FollowSmoothing
