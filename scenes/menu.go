@@ -46,9 +46,9 @@ func (ms *MenuScene) Draw(screen *ebiten.Image) {
 func (ms *MenuScene) configure() {
 	ms.ecs = ecs.NewECS(donburi.NewWorld())
 
-	// Create platformer scene factory that captures the scene changer
-	createPlatformerScene := func() interface{} {
-		return NewPlatformerScene(ms.sceneChanger)
+	// Create lobby scene factory that captures the scene changer
+	createLobbyScene := func() interface{} {
+		return NewLobbyScene(ms.sceneChanger)
 	}
 
 	// Audio system (runs first to initialize audio context)
@@ -56,7 +56,7 @@ func (ms *MenuScene) configure() {
 
 	// Minimal systems for menu
 	ms.ecs.AddSystem(systems.UpdateInput)
-	ms.ecs.AddSystem(systems.NewUpdateMenu(ms.sceneChanger, createPlatformerScene))
+	ms.ecs.AddSystem(systems.NewUpdateMenu(ms.sceneChanger, createLobbyScene))
 	ms.ecs.AddSystem(systems.UpdateSettingsMenu)
 
 	// Renderers (settings draws on top of menu)

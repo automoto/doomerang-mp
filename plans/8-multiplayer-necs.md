@@ -30,13 +30,15 @@ The game supports both **local offline play** and **network multiplayer** with a
 - Milestone 2 - Basic Server ✓
 - Milestone 2b - Single-Player Cleanup ✓
 - Milestone 3 - Multi-Player Input System ✓
+- Milestone 4 - Multi-Player Entities & Spawn ✓
+- Milestone 5 - Match System & Game Modes ✓
+- Milestone 6 - Bot AI System ✓
+- Milestone 7 - Lobby & Match Setup UI ✓
 
-**Next Step:** Milestone 4 - Multi-Player Entities & Spawn
-- Add PlayerIndex to PlayerData
-- Support multiple spawn points
-- Spawn 1-4 players at match start
-
-**Then:** Milestone 5 - Match System & Game Modes
+**Next Step:** Milestone 8 - Server Browser & Connection (Network Multiplayer)
+- Master server for server discovery
+- Server browser UI with favorites/recent
+- Direct connect and password protection
 
 **Notes:**
 - Updated necs to v0.0.5 (commit 82c5928) which includes full srvsync, clisync, router, and transports
@@ -226,65 +228,233 @@ These milestones enable local play before network features.
 
 ---
 
-### Milestone 4: Multi-Player Entities & Spawn
+### Milestone 4: Multi-Player Entities & Spawn ✓
+
+**Status: COMPLETE**
 
 **Goal:** Support spawning and managing multiple player entities.
 
-#### Changes Required
-- Add `PlayerIndex` field to `PlayerData` component
-- Multiple spawn points in level data
-- Create 1-4 player entities at match start
-- HUD: display health/lives for all players
-- Camera: shared view (level fits on screen)
+#### What Was Done
+
+**1. Added `PlayerIndex` to `PlayerData`** (`components/player.go`):
+- Added `PlayerIndex int` field to track which player (0-3) this entity represents
+
+**2. Updated Player Factory** (`systems/factory/player.go`):
+- `CreatePlayer()` now sets `PlayerIndex` in both `PlayerData` and `PlayerInputData`
+
+**3. Multi-Player Spawn Logic** (`scenes/world.go`):
+- Spawns 2 players by default (P1: WASD, P2: Arrows)
+- Uses spawn points from level, with offset fallback when insufficient spawn points
+- Updated `checkGameOver()` to check if ALL players are removed
+
+**4. Multi-Player HUD** (`systems/hud.go`):
+- Health bars positioned by player index (P1: top-left, P2: top-right, P3: bottom-left, P4: bottom-right)
+- Color-coded health bars (P1: green, P2: blue, P3: yellow, P4: orange)
+- Lives hearts align correctly for each corner position
+
+**5. Multi-Player Camera** (`systems/camera.go`):
+- Camera centers on midpoint of all active players
+- Look-ahead only applies in single-player mode
+- Smooth decay of look-ahead when switching to multiplayer
+
+**Files Modified:**
+- [x] `components/player.go` - Added PlayerIndex field
+- [x] `systems/factory/player.go` - Set PlayerIndex in CreatePlayer
+- [x] `scenes/world.go` - Multi-player spawn with input configs
+- [x] `systems/hud.go` - Per-player positioned and colored HUD
+- [x] `systems/camera.go` - Multi-player camera centering
+
+**Current State:**
+- 2 players spawn with WASD and Arrow controls
+- Each player has their own HUD in different corners
+- Camera follows the center of all players
+- Game over only when all players are removed
 
 ---
 
-### Milestone 5: Match System & Game Modes
+### Milestone 5: Match System & Game Modes ✓
+
+**Status: COMPLETE**
 
 **Goal:** Implement match flow, scoring, and win conditions.
 
-#### Components
-- `MatchData` - current match state, timer, scores per player
-- `TeamData` - team assignments (for 2v2)
+#### What Was Done
 
-#### Game Modes
-1. **Free-for-all**: All players compete, most KOs wins
-2. **1v1**: Two players, most KOs wins
-3. **2v2**: Teams, combined KO count wins
-4. **Co-op vs Bots**: All humans vs AI enemies
+**1. Match Configuration** (`config/config.go`):
+- Added `MatchConfig` with: DefaultDuration, CountdownDuration, RespawnDelay
+- Added `GameModeID` enum: FreeForAll, 1v1, 2v2, CoopVsBots
+- Default 2-minute matches with 3-second countdown
 
-#### Match Flow
-1. Pre-match lobby (player/bot selection, game mode, teams)
-2. Match countdown (3...2...1)
-3. Timed gameplay
-4. Match end → results screen
-5. Return to lobby or menu
+**2. Match States** (`config/states.go`):
+- Added `MatchStateID` enum: Waiting, Countdown, Playing, Finished
+
+**3. Match Component** (`components/match.go`):
+- `MatchData` with: State, GameMode, Timer, Duration, Scores, Winner
+- `PlayerScore` struct with: PlayerIndex, KOs, Deaths, Team
+- Helper methods: AddKO, AddDeath, GetLeader, GetTeamScore
+
+**4. Match System** (`systems/match.go`):
+- `UpdateMatch()` handles state transitions and timers
+- Countdown timer with visual countdown value (3, 2, 1, GO)
+- Match timer counts down during gameplay
+- Win condition detection (most KOs, tie detection)
+- `IsMatchPlaying()`, `IsMatchFinished()` helpers
+
+**5. Death Tracking** (`systems/death.go`, `components/death.go`):
+- Added `LastAttackerIndex` to `DeathData` for KO attribution
+- `trackMatchScore()` records KOs and deaths in MatchData
+
+**6. Match HUD** (`systems/match_hud.go`):
+- Timer display at top center
+- Player scores with color coding
+- Countdown overlay (3, 2, 1, GO!)
+- Results screen with winner and final scores
+
+**7. World Scene Integration** (`scenes/world.go`):
+- Match entity created on game start
+- Match system registered
+- Match HUD renderer added
+- Returns to menu when match finished
+
+**Files Created:**
+- `components/match.go` - MatchData component
+- `systems/match.go` - Match logic system
+- `systems/match_hud.go` - Match HUD rendering
+
+**Files Modified:**
+- `config/config.go` - Added MatchConfig, GameModeID
+- `config/states.go` - Added MatchStateID
+- `components/death.go` - Added LastAttackerIndex
+- `systems/death.go` - Added KO tracking
+- `scenes/world.go` - Match initialization and flow
+
+**Current State:**
+- Matches start with 3-second countdown
+- 2-minute timed matches by default
+- KOs and deaths tracked per player
+- Winner determined at match end
+- Results screen shows final scores
 
 ---
 
-### Milestone 6: Bot AI System
+### Milestone 6: Bot AI System ✓
+
+**Status: COMPLETE**
 
 **Goal:** Implement AI-controlled players for solo/co-op play.
 
-#### Bot Behavior
-- `BotInputData` component generates inputs via AI
-- State machine: Patrol → Chase → Attack → Retreat
-- Reuse existing enemy AI patterns as starting point
-- Difficulty levels (optional)
+#### What Was Done
+
+**1. Bot Component** (`components/bot.go`):
+- `BotData` struct with AI state, target tracking, and behavior timers
+- `BotStateID` enum: Idle, Patrol, Chase, Attack, Retreat, Jump
+- `BotDifficulty` enum: Easy, Normal, Hard
+- `InitBotForDifficulty()` sets reaction times, ranges, thresholds per difficulty
+
+**2. Bot AI System** (`systems/bot.go`):
+- `UpdateBots()` generates inputs for all bot-controlled players
+- State machine with transitions based on target distance and health
+- Target tracking: finds nearest enemy player
+- Behavior functions per state:
+  - `generatePatrolInputs()` - wander, change direction, jump when stuck
+  - `generateChaseInputs()` - pursue target, jump to reach, wall jump
+  - `generateAttackInputs()` - melee attack, throw boomerang at range
+  - `generateRetreatInputs()` - flee when low health, counter-attack if cornered
+
+**3. Bot Player Factory** (`systems/factory/player.go`):
+- `CreateBotPlayer()` function creates player with Bot component
+- Reuses regular player creation, adds Bot component on top
+
+**4. World Scene Integration** (`scenes/world.go`):
+- Bot system registered before input system
+- Supports spawning bot players alongside human players
+- Default: 2 humans + 1 bot (Normal difficulty)
+
+**Difficulty Settings:**
+
+| Difficulty | Reaction Time | Attack Range | Chase Range | Retreat Threshold |
+|------------|---------------|--------------|-------------|-------------------|
+| Easy | 0.5s | 40px | 150px | 20% health |
+| Normal | 0.25s | 50px | 200px | 30% health |
+| Hard | ~instant | 60px | 250px | 15% health |
+
+**Files Created:**
+- `components/bot.go` - Bot component and difficulty config
+- `systems/bot.go` - Bot AI system
+
+**Files Modified:**
+- `systems/factory/player.go` - Added CreateBotPlayer()
+- `scenes/world.go` - Bot system registration and spawning
+
+**Current State:**
+- Bots use same input system as human players
+- Bots patrol, chase, attack, and retreat intelligently
+- 1 bot spawns by default for testing (configurable)
 
 ---
 
-### Milestone 7: Lobby & Match Setup UI
+### Milestone 7: Lobby & Match Setup UI ✓
 
-**Goal:** Pre-match screen using [ebitenui](https://github.com/ebitenui/ebitenui).
+**Status: COMPLETE**
 
-#### Features
-- Add/remove players (detect gamepads, assign keyboard zones)
-- Add/remove bots
-- Select game mode
-- Team assignment (for 2v2)
-- Match settings (time limit)
-- Start match button
+**Goal:** Pre-match screen for configuring players, bots, and match settings using ebitenui.
+
+#### What Was Done
+
+**1. Lobby Component** (`components/lobby.go`):
+- `LobbyData` stores match configuration state
+- `PlayerSlot` struct for each of 4 player slots (Empty/Human/Bot)
+- Support for keyboard zones, gamepad assignment, bot difficulty, teams
+- Helper functions: `CycleSlotType`, `CycleGameMode`, `CycleMatchTime`, etc.
+- Validation: `CanStartMatch()` checks game mode requirements
+
+**2. ebitenui Integration** (`ui/lobby_ui.go`):
+- Full ebitenui-based UI with proper widget hierarchy
+- Container layouts (RowLayout) for responsive design
+- Button widgets with hover/press states
+- Label widgets with dynamic text updates
+- Color-coded player slots (green, blue, yellow, orange)
+- Uses Go fonts (`golang.org/x/image/font/gofont/goregular`)
+
+**3. Lobby Scene** (`scenes/lobby.go`):
+- Integrates ebitenui UI with ECS for audio
+- Callback-based scene transitions
+- Creates `MatchConfig` to pass to game scene
+
+**4. Scene Flow:**
+- Menu → Lobby → Game (with config)
+- Game uses `MatchConfig` to spawn correct players/bots
+- Match settings (game mode, duration) passed from lobby
+
+#### Lobby UI Features:
+- 4 player slots (click to cycle: Empty → Human → Bot)
+- Input device display (WASD, Arrows, Gamepad, AI)
+- Bot difficulty selection (Easy/Normal/Hard)
+- Team assignment for 2v2 mode
+- Game mode selection (FFA, 1v1, 2v2, Co-op vs Bots)
+- Match time selection (1-5 minutes)
+- Validation messages (e.g., "2v2 requires 4 players")
+- Back and Start buttons with proper states
+
+**Dependencies Added:**
+- `github.com/ebitenui/ebitenui` v0.7.2
+
+**Files Created:**
+- `components/lobby.go` - Lobby component and helpers
+- `scenes/lobby.go` - Lobby scene with ebitenui integration
+- `ui/lobby_ui.go` - ebitenui-based lobby interface
+
+**Files Modified:**
+- `scenes/menu.go` - Navigate to lobby instead of game
+- `scenes/world.go` - Accept MatchConfig, spawn players from config
+- `go.mod` - Added ebitenui dependency
+
+**Current State:**
+- Full lobby flow working with clickable UI
+- Mouse-based interaction via ebitenui
+- Players can configure any combination of humans/bots
+- Game mode and time limits configurable
+- All validation working
 
 ---
 

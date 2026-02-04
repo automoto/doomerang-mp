@@ -20,12 +20,18 @@ import (
 type PlatformerScene struct {
 	ecs          *ecs.ECS
 	sceneChanger SceneChanger
+	matchConfig  *MatchConfig
 	once         sync.Once
 }
 
-// NewPlatformerScene creates a new platformer scene
+// NewPlatformerScene creates a new platformer scene with default configuration
 func NewPlatformerScene(sc SceneChanger) *PlatformerScene {
-	return &PlatformerScene{sceneChanger: sc}
+	return &PlatformerScene{sceneChanger: sc, matchConfig: nil}
+}
+
+// NewPlatformerSceneWithConfig creates a new platformer scene with lobby configuration
+func NewPlatformerSceneWithConfig(sc SceneChanger, config *MatchConfig) *PlatformerScene {
+	return &PlatformerScene{sceneChanger: sc, matchConfig: config}
 }
 
 func (ps *PlatformerScene) Update() {
@@ -80,6 +86,7 @@ func (ps *PlatformerScene) configure() {
 
 	// Systems that always run
 	ecs.AddSystem(systems.UpdateInput)
+	ecs.AddSystem(systems.UpdateBots) // Must run before UpdateMultiPlayerInput
 	ecs.AddSystem(systems.UpdateMultiPlayerInput)
 	ecs.AddSystem(systems.UpdatePause)
 
@@ -167,37 +174,104 @@ func (ps *PlatformerScene) configure() {
 		panic(err)
 	}
 
-	// Define input configurations for each player slot
-	// Player 0: WASD keyboard zone
-	// Player 1: Arrow keyboard zone
-	// Players 2-3: Gamepads (when connected) or additional keyboard zones
-	playerInputConfigs := []factory2.PlayerInputConfig{
-		{PlayerIndex: 0, GamepadID: nil, KeyboardZone: components.KeyboardZoneWASD},
-		{PlayerIndex: 1, GamepadID: nil, KeyboardZone: components.KeyboardZoneArrows},
-	}
-
-	numPlayers := len(playerInputConfigs)
 	numSpawns := len(levelData.CurrentLevel.PlayerSpawns)
-
 	var firstPlayerSpawn assets.PlayerSpawn
-	for i := 0; i < numPlayers; i++ {
-		// Use spawn point if available, otherwise offset from first spawn
-		var spawnX, spawnY float64
-		if i < numSpawns {
-			spawn := levelData.CurrentLevel.PlayerSpawns[i]
-			spawnX, spawnY = spawn.X, spawn.Y
-		} else {
-			// Offset from first spawn point (30 pixels apart horizontally)
-			spawn := levelData.CurrentLevel.PlayerSpawns[0]
-			spawnX = spawn.X + float64(i)*30.0
-			spawnY = spawn.Y
+	playerIndex := 0
+	numPlayers := 0
+
+	// Use lobby config if available, otherwise use defaults
+	if ps.matchConfig != nil {
+		// Spawn players from lobby configuration
+		for i := 0; i < 4; i++ {
+			slot := &ps.matchConfig.Slots[i]
+			if slot.Type == components.SlotEmpty {
+				continue
+			}
+
+			var spawnX, spawnY float64
+			if playerIndex < numSpawns {
+				spawn := levelData.CurrentLevel.PlayerSpawns[playerIndex]
+				spawnX, spawnY = spawn.X, spawn.Y
+			} else {
+				spawn := levelData.CurrentLevel.PlayerSpawns[0]
+				spawnX = spawn.X + float64(playerIndex)*30.0
+				spawnY = spawn.Y
+			}
+			if playerIndex == 0 {
+				firstPlayerSpawn = levelData.CurrentLevel.PlayerSpawns[0]
+			}
+
+			if slot.Type == components.SlotHuman {
+				inputCfg := factory2.PlayerInputConfig{
+					PlayerIndex:  i,
+					GamepadID:    slot.GamepadID,
+					KeyboardZone: slot.KeyboardZone,
+				}
+				player := factory2.CreatePlayer(ps.ecs, spawnX, spawnY, inputCfg)
+				playerObj := components.Object.Get(player)
+				space.Add(playerObj.Object)
+			} else if slot.Type == components.SlotBot {
+				bot := factory2.CreateBotPlayer(ps.ecs, spawnX, spawnY, i, slot.BotDifficulty)
+				botObj := components.Object.Get(bot)
+				space.Add(botObj.Object)
+			}
+			playerIndex++
+			numPlayers++
 		}
-		if i == 0 {
-			firstPlayerSpawn = levelData.CurrentLevel.PlayerSpawns[0]
+	} else {
+		// Default configuration (for backwards compatibility)
+		playerInputConfigs := []factory2.PlayerInputConfig{
+			{PlayerIndex: 0, GamepadID: nil, KeyboardZone: components.KeyboardZoneWASD},
+			{PlayerIndex: 1, GamepadID: nil, KeyboardZone: components.KeyboardZoneArrows},
 		}
-		player := factory2.CreatePlayer(ps.ecs, spawnX, spawnY, playerInputConfigs[i])
-		playerObj := components.Object.Get(player)
-		space.Add(playerObj.Object)
+
+		botConfigs := []struct {
+			playerIndex int
+			difficulty  cfg.BotDifficulty
+		}{
+			{playerIndex: 2, difficulty: cfg.BotDifficultyNormal},
+		}
+
+		numHumans := len(playerInputConfigs)
+		numBots := len(botConfigs)
+		numPlayers = numHumans + numBots
+
+		// Spawn human players
+		for i := 0; i < numHumans; i++ {
+			var spawnX, spawnY float64
+			if playerIndex < numSpawns {
+				spawn := levelData.CurrentLevel.PlayerSpawns[playerIndex]
+				spawnX, spawnY = spawn.X, spawn.Y
+			} else {
+				spawn := levelData.CurrentLevel.PlayerSpawns[0]
+				spawnX = spawn.X + float64(playerIndex)*30.0
+				spawnY = spawn.Y
+			}
+			if playerIndex == 0 {
+				firstPlayerSpawn = levelData.CurrentLevel.PlayerSpawns[0]
+			}
+			player := factory2.CreatePlayer(ps.ecs, spawnX, spawnY, playerInputConfigs[i])
+			playerObj := components.Object.Get(player)
+			space.Add(playerObj.Object)
+			playerIndex++
+		}
+
+		// Spawn bot players
+		for _, botCfg := range botConfigs {
+			var spawnX, spawnY float64
+			if playerIndex < numSpawns {
+				spawn := levelData.CurrentLevel.PlayerSpawns[playerIndex]
+				spawnX, spawnY = spawn.X, spawn.Y
+			} else {
+				spawn := levelData.CurrentLevel.PlayerSpawns[0]
+				spawnX = spawn.X + float64(playerIndex)*30.0
+				spawnY = spawn.Y
+			}
+			bot := factory2.CreateBotPlayer(ps.ecs, spawnX, spawnY, botCfg.playerIndex, botCfg.difficulty)
+			botObj := components.Object.Get(bot)
+			space.Add(botObj.Object)
+			playerIndex++
+		}
 	}
 
 	// Snap camera to first player's start position to prevent panning from (0,0)
@@ -208,7 +282,7 @@ func (ps *PlatformerScene) configure() {
 	}
 
 	// Create match entity and start countdown
-	createMatch(ps.ecs, numPlayers)
+	createMatchWithConfig(ps.ecs, numPlayers, ps.matchConfig)
 
 	// Spawn enemies for the current level
 	for _, spawn := range levelData.CurrentLevel.EnemySpawns {
@@ -226,24 +300,47 @@ func (ps *PlatformerScene) configure() {
 	systems.PlayLevelMusic(ps.ecs, levelData.CurrentLevel.Name)
 }
 
-// createMatch creates the match entity and initializes match state
-func createMatch(e *ecs.ECS, numPlayers int) {
+// createMatchWithConfig creates the match entity and initializes match state with optional config
+func createMatchWithConfig(e *ecs.ECS, numPlayers int, matchConfig *MatchConfig) {
 	matchEntry := e.World.Entry(e.World.Create(components.Match))
+
+	// Determine game mode and duration
+	gameMode := cfg.Match.DefaultGameMode
+	duration := cfg.Match.DefaultDuration
+	if matchConfig != nil {
+		gameMode = matchConfig.GameMode
+		duration = matchConfig.MatchMinutes * 60 * 60 // Convert minutes to frames (60 fps)
+	}
 
 	// Initialize scores for all players
 	scores := make([]components.PlayerScore, numPlayers)
-	for i := 0; i < numPlayers; i++ {
-		scores[i] = components.PlayerScore{
-			PlayerIndex: i,
-			Team:        -1, // FFA mode
+	scoreIdx := 0
+	if matchConfig != nil {
+		for i := 0; i < 4; i++ {
+			slot := &matchConfig.Slots[i]
+			if slot.Type == components.SlotEmpty {
+				continue
+			}
+			scores[scoreIdx] = components.PlayerScore{
+				PlayerIndex: i,
+				Team:        slot.Team,
+			}
+			scoreIdx++
+		}
+	} else {
+		for i := 0; i < numPlayers; i++ {
+			scores[i] = components.PlayerScore{
+				PlayerIndex: i,
+				Team:        -1, // FFA mode
+			}
 		}
 	}
 
 	components.Match.SetValue(matchEntry, components.MatchData{
 		State:          cfg.MatchStateCountdown,
-		GameMode:       cfg.Match.DefaultGameMode,
+		GameMode:       gameMode,
 		Timer:          cfg.Match.CountdownDuration,
-		Duration:       cfg.Match.DefaultDuration,
+		Duration:       duration,
 		Scores:         scores,
 		WinnerIndex:    -2, // No winner yet
 		WinningTeam:    -1,
