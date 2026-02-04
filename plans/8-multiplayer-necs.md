@@ -5,17 +5,37 @@ Add competitive PvP multiplayer to Doomerang using the [necs](https://github.com
 
 ---
 
+## Local Multiplayer Requirements (Clarified)
+
+The game supports both **local offline play** and **network multiplayer** with a unified architecture:
+
+| Requirement | Details |
+|-------------|---------|
+| **Local Players** | 1-4 players on same machine |
+| **Input Devices** | Fixed keyboard zones + up to 4 gamepads |
+| **Keyboard Zone 0** | WASD area (P1/P3): WASD + Space + nearby keys |
+| **Keyboard Zone 1** | Arrow area (P2/P4): Arrows + Enter + nearby keys |
+| **Bots** | Flexible - any combo of 1-4 humans + 0-3 bots |
+| **Game Modes** | 1v1, 2v2, Free-for-all, Co-op vs bots |
+| **Team Assignment** | Player choice in lobby (for 2v2) |
+| **Win Condition** | Timed match, most KOs wins |
+| **UI Library** | [ebitenui](https://github.com/ebitenui/ebitenui) for lobby/setup |
+
+---
+
 ## Current Progress
 
 **Completed:**
 - Milestone 1 - Foundation & Shared Code ✓
 - Milestone 2 - Basic Server ✓
+- Milestone 2b - Single-Player Cleanup ✓
 
-**Next Step:** Milestone 2b - Single-Player Cleanup
-- Remove level progression, checkpoints, local save/load
-- Update pause menu and game over for multiplayer
+**Next Step:** Milestone 3 - Multi-Player Input System (Local)
+- Per-player input components
+- Keyboard zone splitting (WASD vs Arrows)
+- Gamepad-to-player binding
 
-**Then:** Milestone 3 - Server Browser & Connection
+**Then:** Milestone 4 - Multi-Player Entities & Spawn
 
 **Notes:**
 - Updated necs to v0.0.5 (commit 82c5928) which includes full srvsync, clisync, router, and transports
@@ -124,49 +144,157 @@ A headless game server that accepts WebSocket connections, manages the ECS world
 
 ---
 
-## Milestone 2b: Single-Player Cleanup
+## Milestone 2b: Single-Player Cleanup ✓
 
-### Design
-Remove single-player only features and code that won't be used in the multiplayer version. This simplifies the codebase and clarifies what's client vs server responsibility.
+**Status: COMPLETE**
 
-### Features to Remove
-| Feature | Files Affected | Reason |
-|---------|---------------|--------|
-| Level progression | `systems/levelcomplete.go`, `systems/finishline.go` | MP uses match-based rounds, not level progression |
-| Checkpoints | `systems/checkpoint.go`, `systems/factory/checkpoint.go` | No checkpoints in PvP - respawn at spawn points |
-| Pause menu (single-player) | `systems/pause.go` | MP can't pause - replace with disconnect/settings |
-| Local save/load | `systems/persistence.go` | Server manages match state |
-| Game over (single-player) | `scenes/gameover.go`, `systems/gameover.go` | Replace with match results screen |
+### What Was Done
 
-### Files to Remove
-- [ ] `systems/levelcomplete.go` - Level completion logic
-- [ ] `systems/finishline.go` - Finish line detection
-- [ ] `systems/factory/finishline.go` - Finish line factory
-- [ ] `systems/checkpoint.go` - Checkpoint system
-- [ ] `systems/factory/checkpoint.go` - Checkpoint factory
-- [ ] `systems/persistence.go` - Local game save/load
+**Files Deleted (8):**
+- `systems/levelcomplete.go` - Level completion logic
+- `systems/finishline.go` - Finish line detection
+- `systems/factory/finishline.go` - Finish line factory
+- `systems/checkpoint.go` - Checkpoint system
+- `systems/factory/checkpoint.go` - Checkpoint factory
+- `components/checkpoint.go` - CheckpointData, ActiveCheckpointData
+- `components/finishline.go` - FinishLineData
+- `components/levelcomplete.go` - LevelCompleteData
 
-### Files to Modify
-- [ ] `systems/pause.go` - Convert to multiplayer menu (disconnect, settings)
-- [ ] `scenes/gameover.go` - Convert to match results screen
-- [ ] `systems/gameover.go` - Convert to match end logic
-- [ ] `scenes/menu.go` - Remove "Continue" option, add "Multiplayer" button
-- [ ] `archetypes/archetypes.go` - Remove Checkpoint, FinishLine archetypes
-- [ ] `components/` - Remove checkpoint-related components if any
+**Files Modified (10):**
+- [x] `archetypes/archetypes.go` - Removed Checkpoint, FinishLine archetypes
+- [x] `tags/tags.go` - Removed checkpoint/finishline tags
+- [x] `systems/persistence.go` - Removed game progress (kept settings persistence)
+- [x] `scenes/world.go` - Removed SP systems, simplified spawn logic
+- [x] `components/level.go` - Removed ActiveCheckpoint field
+- [x] `systems/death.go` - Simplified respawn to use default spawn
+- [x] `components/menu.go` - Added MainMenuMultiplayer, removed MainMenuContinue
+- [x] `systems/menu.go` - Simplified menu, removed confirmation dialog
+- [x] `config/config.go` - Updated menu options, removed StartCheckpoint
+- [x] `main.go` - Removed checkpoint flag
 
-### Implementation Tasks
-- [ ] Remove level progression systems and factories
-- [ ] Remove checkpoint systems and factories
-- [ ] Update pause menu for multiplayer (disconnect option)
-- [ ] Convert game over to match results
-- [ ] Update main menu (remove Continue, add Multiplayer)
-- [ ] Clean up unused archetypes and components
-- [ ] Update any remaining references
-- [ ] Verify game still builds: `go build ./...`
+**Current State:**
+- Menu shows [Multiplayer, Settings, Exit]
+- Multiplayer button starts game (placeholder for lobby)
+- Settings persistence works
+- Game over screen kept for testing
 
 ---
 
-## Milestone 3: Server Browser & Connection
+## Local Multiplayer Milestones
+
+These milestones enable local play before network features.
+
+### Milestone 3: Multi-Player Input System
+
+**Goal:** Extend input system to support 4 local players with independent input streams.
+
+#### Current Architecture
+- Single global `InputData` component (singleton)
+- All gamepads + keyboard merged into one input stream
+- Action-based abstraction via `GetAction(input, actionID)`
+
+#### Required Changes
+
+**1. New `PlayerInputData` Component** (`components/input.go`):
+```go
+type PlayerInputData struct {
+    PlayerIndex     int                    // 0-3
+    CurrentInput    [cfg.ActionCount]bool
+    PreviousInput   [cfg.ActionCount]bool
+    BoundGamepadID  *ebiten.GamepadID      // nil = keyboard
+    KeyboardZone    int                    // 0=WASD, 1=Arrows, -1=none
+    InputMethod     InputMethod
+}
+```
+
+**2. Keyboard Zone Configuration** (`config/input.go`):
+- Zone 0 (WASD area): A/D/W/S + Space + F/G (attack/boomerang)
+- Zone 1 (Arrow area): Arrows + Enter + Shift/Ctrl (attack/boomerang)
+
+**3. Per-Player Input Polling** (`systems/input.go`):
+- `UpdateMultiPlayerInput()` - polls each player's bound device
+- Gamepad binding: first connected → P1, second → P2, etc.
+- Keyboard zones: independent polling per zone
+
+**Files to modify:**
+- `components/input.go` - Add PlayerInputData
+- `config/input.go` - Add keyboard zone bindings
+- `systems/input.go` - Per-player polling
+- `systems/player.go` - Use player-specific input
+- `systems/factory/player.go` - Attach PlayerInputData
+- `archetypes/archetypes.go` - Add PlayerInputData to Player archetype
+
+---
+
+### Milestone 4: Multi-Player Entities & Spawn
+
+**Goal:** Support spawning and managing multiple player entities.
+
+#### Changes Required
+- Add `PlayerIndex` field to `PlayerData` component
+- Multiple spawn points in level data
+- Create 1-4 player entities at match start
+- HUD: display health/lives for all players
+- Camera: shared view (level fits on screen)
+
+---
+
+### Milestone 5: Match System & Game Modes
+
+**Goal:** Implement match flow, scoring, and win conditions.
+
+#### Components
+- `MatchData` - current match state, timer, scores per player
+- `TeamData` - team assignments (for 2v2)
+
+#### Game Modes
+1. **Free-for-all**: All players compete, most KOs wins
+2. **1v1**: Two players, most KOs wins
+3. **2v2**: Teams, combined KO count wins
+4. **Co-op vs Bots**: All humans vs AI enemies
+
+#### Match Flow
+1. Pre-match lobby (player/bot selection, game mode, teams)
+2. Match countdown (3...2...1)
+3. Timed gameplay
+4. Match end → results screen
+5. Return to lobby or menu
+
+---
+
+### Milestone 6: Bot AI System
+
+**Goal:** Implement AI-controlled players for solo/co-op play.
+
+#### Bot Behavior
+- `BotInputData` component generates inputs via AI
+- State machine: Patrol → Chase → Attack → Retreat
+- Reuse existing enemy AI patterns as starting point
+- Difficulty levels (optional)
+
+---
+
+### Milestone 7: Lobby & Match Setup UI
+
+**Goal:** Pre-match screen using [ebitenui](https://github.com/ebitenui/ebitenui).
+
+#### Features
+- Add/remove players (detect gamepads, assign keyboard zones)
+- Add/remove bots
+- Select game mode
+- Team assignment (for 2v2)
+- Match settings (time limit)
+- Start match button
+
+---
+
+## Network Multiplayer Milestones
+
+These milestones extend local play to network.
+
+### Milestone 8: Server Browser & Connection
+
+**Goal:** Server discovery, favorites, direct connect, and password protection.
 
 ### Design
 Players can browse available servers from a master server, manually enter IP addresses, save favorites, and view recent servers. Supports password-protected private servers.
@@ -333,7 +461,7 @@ type SavedServer struct {
 
 ---
 
-## Milestone 3b: Client Connection & Entity Sync
+## Milestone 8b: Client Connection & Entity Sync
 
 ### Design
 After selecting a server, client connects and receives entity state. Remote players appear and move based on server snapshots.
@@ -365,7 +493,7 @@ After selecting a server, client connects and receives entity state. Remote play
 
 ---
 
-## Milestone 4: Input & Server-Side Movement
+## Milestone 9: Input & Server-Side Movement
 
 ### Design
 Client captures input and sends it to the server. Server processes input and moves players authoritatively.
@@ -398,7 +526,7 @@ type PlayerInput struct {
 
 ---
 
-## Milestone 5: Client-Side Prediction
+## Milestone 10: Client-Side Prediction
 
 ### Design
 For responsive controls, the local player moves immediately based on local input (prediction). When server state arrives, reconcile any differences.
@@ -425,7 +553,7 @@ For responsive controls, the local player moves immediately based on local input
 
 ---
 
-## Milestone 6: Boomerang Sync
+## Milestone 11: Boomerang Sync
 
 ### Design
 Boomerang throws are initiated by clients, validated by server, and synchronized to all players.
@@ -449,7 +577,7 @@ Boomerang throws are initiated by clients, validated by server, and synchronized
 
 ---
 
-## Milestone 7: Combat Sync
+## Milestone 12: Combat Sync
 
 ### Design
 All combat (punches, boomerang hits) is resolved by the server. Hit events are broadcast to clients.
@@ -489,7 +617,7 @@ type DeathEvent struct {
 
 ---
 
-## Milestone 8: Enemy Sync
+## Milestone 13: Enemy Sync
 
 ### Design
 For PvP, enemies may be optional. If included, server manages all enemy AI and syncs state.
@@ -509,7 +637,7 @@ For PvP, enemies may be optional. If included, server manages all enemy AI and s
 
 ---
 
-## Milestone 9: Game State & Match Flow
+## Milestone 14: Network Game State & Match Flow
 
 ### Design
 Server manages match state (waiting, playing, finished). Tracks scores and declares winner.
@@ -533,7 +661,7 @@ Server manages match state (waiting, playing, finished). Tracks scores and decla
 
 ---
 
-## Milestone 10: WASM Build
+## Milestone 15: WASM Build
 
 ### Design
 Build the client as WebAssembly for browser play. Server remains native Go.

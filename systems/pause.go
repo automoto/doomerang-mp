@@ -144,6 +144,12 @@ func WithPauseCheck(system ecs.System) ecs.System {
 	}
 }
 
+// WithGameplayChecks wraps a system to skip execution when paused.
+// This is an alias for WithPauseCheck for semantic clarity.
+func WithGameplayChecks(system ecs.System) ecs.System {
+	return WithPauseCheck(system)
+}
+
 // GetOrCreatePause returns the singleton Pause component, creating if needed.
 func GetOrCreatePause(ecs *ecs.ECS) *components.PauseData {
 	if _, ok := components.Pause.First(ecs.World); !ok {

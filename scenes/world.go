@@ -3,7 +3,6 @@ package scenes
 import (
 	"errors"
 	"image/color"
-	"log"
 	"sync"
 
 	"github.com/automoto/doomerang-mp/assets"
@@ -86,12 +85,9 @@ func (ps *PlatformerScene) configure() {
 	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateCombat))
 	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateCombatHitboxes))
 	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateDeaths))
-	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateCheckpoints))
 	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateFire))
 	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateEffects))
 	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateMessage))
-	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateFinishLine))
-	ecs.AddSystem(systems.UpdateLevelComplete)
 
 	// Systems that run even when paused
 	ecs.AddSystem(systems.UpdateSettings)
@@ -109,7 +105,6 @@ func (ps *PlatformerScene) configure() {
 	ecs.AddRenderer(cfg.Default, systems.DrawDebug)
 	ecs.AddRenderer(cfg.Default, systems.DrawPause)
 	ecs.AddRenderer(cfg.Default, systems.DrawSettingsMenu)
-	ecs.AddRenderer(cfg.Default, systems.DrawLevelComplete)
 
 	ps.ecs = ecs
 
@@ -142,11 +137,6 @@ func (ps *PlatformerScene) configure() {
 		factory2.CreateDeadZone(ps.ecs, dz.X, dz.Y, dz.Width, dz.Height)
 	}
 
-	// Create checkpoints from the level
-	for _, ckp := range levelData.CurrentLevel.Checkpoints {
-		factory2.CreateCheckpoint(ps.ecs, ckp.X, ckp.Y, ckp.Width, ckp.Height, ckp.CheckpointID)
-	}
-
 	// Create fire obstacles from the level
 	for _, fire := range levelData.CurrentLevel.Fires {
 		factory2.CreateFire(ps.ecs, fire.X, fire.Y, fire.FireType, fire.Direction)
@@ -157,59 +147,14 @@ func (ps *PlatformerScene) configure() {
 		factory2.CreateMessagePoint(ps.ecs, msg.X, msg.Y, msg.MessageID)
 	}
 
-	// Create finish lines from the level
-	for _, fl := range levelData.CurrentLevel.FinishLines {
-		factory2.CreateFinishLine(ps.ecs, fl.X, fl.Y, fl.Width, fl.Height)
+	// Determine player spawn position (use default spawn point)
+	if len(levelData.CurrentLevel.PlayerSpawns) <= 0 {
+		err := errors.New("no player spawn points defined in Map")
+		panic(err)
 	}
-
-	// Determine player spawn position
-	var playerSpawnX, playerSpawnY float64
-	var foundCheckpoint bool
-
-	// Load saved checkpoint progress
-	if progress, _ := systems.LoadGameProgress(); progress != nil && progress.LevelIndex == levelData.LevelIndex {
-		levelData.ActiveCheckpoint = &components.ActiveCheckpointData{
-			SpawnX:       progress.CheckpointSpawnX,
-			SpawnY:       progress.CheckpointSpawnY,
-			CheckpointID: progress.CheckpointID,
-		}
-		playerSpawnX = progress.CheckpointSpawnX
-		playerSpawnY = progress.CheckpointSpawnY
-		foundCheckpoint = true
-	}
-
-	// Check if we should spawn at a specific checkpoint (debug/testing) - overrides saved progress
-	if cfg.Debug.StartCheckpoint >= 0 {
-		for _, ckp := range levelData.CurrentLevel.Checkpoints {
-			if ckp.CheckpointID == cfg.Debug.StartCheckpoint {
-				playerSpawnX = ckp.X + ckp.Width/2
-				playerSpawnY = ckp.Y + ckp.Height/2
-				foundCheckpoint = true
-
-				// Set active checkpoint so respawns work correctly
-				levelData.ActiveCheckpoint = &components.ActiveCheckpointData{
-					SpawnX:       playerSpawnX,
-					SpawnY:       playerSpawnY,
-					CheckpointID: ckp.CheckpointID,
-				}
-				break
-			}
-		}
-		if !foundCheckpoint {
-			log.Printf("Warning: Checkpoint %.0f not found, using default spawn", cfg.Debug.StartCheckpoint)
-		}
-	}
-
-	// Fallback to default spawn
-	if !foundCheckpoint {
-		if len(levelData.CurrentLevel.PlayerSpawns) <= 0 {
-			err := errors.New("no player spawn points defined in Map")
-			panic(err)
-		}
-		spawn := levelData.CurrentLevel.PlayerSpawns[0]
-		playerSpawnX = spawn.X
-		playerSpawnY = spawn.Y
-	}
+	spawn := levelData.CurrentLevel.PlayerSpawns[0]
+	playerSpawnX := spawn.X
+	playerSpawnY := spawn.Y
 
 	// Create the player at the determined position
 	player := factory2.CreatePlayer(ps.ecs, playerSpawnX, playerSpawnY)

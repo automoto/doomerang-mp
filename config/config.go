@@ -247,18 +247,15 @@ type PauseConfig struct {
 
 // MenuConfig contains main menu configuration values
 type MenuConfig struct {
-	BackgroundColor      color.RGBA
-	TitleColor           color.RGBA
-	TextColorNormal      color.RGBA
-	TextColorSelected    color.RGBA
-	TitleY               float64
-	MenuStartY           float64
-	MenuItemHeight       float64
-	MenuItemGap          float64
-	MenuOptions          []string
-	ConfirmDialogMessage string
-	ConfirmDialogYes     string
-	ConfirmDialogNo      string
+	BackgroundColor   color.RGBA
+	TitleColor        color.RGBA
+	TextColorNormal   color.RGBA
+	TextColorSelected color.RGBA
+	TitleY            float64
+	MenuStartY        float64
+	MenuItemHeight    float64
+	MenuItemGap       float64
+	MenuOptions       []string
 }
 
 // GameOverConfig contains game over screen configuration values
@@ -354,8 +351,7 @@ var Camera CameraConfig
 
 // DebugConfig contains debug/testing command-line options
 type DebugConfig struct {
-	SkipMenu        bool    // Skip menu and go directly to game
-	StartCheckpoint float64 // Checkpoint ID to spawn at (-1 = use default)
+	SkipMenu bool // Skip menu and go directly to game
 }
 
 // MessageConfig contains message popup configuration
@@ -685,18 +681,15 @@ func init() {
 
 	// Menu Config
 	Menu = MenuConfig{
-		BackgroundColor:      color.RGBA{R: 15, G: 25, B: 50, A: 255},
-		TitleColor:           Orange,
-		TextColorNormal:      White,
-		TextColorSelected:    BrightOrange,
-		TitleY:               50,
-		MenuStartY:           100,
-		MenuItemHeight:       30,
-		MenuItemGap:          12,
-		MenuOptions:          []string{"Start", "Continue", "Settings", "Exit"},
-		ConfirmDialogMessage: "Overwrite existing save?",
-		ConfirmDialogYes:     "Yes",
-		ConfirmDialogNo:      "No",
+		BackgroundColor:   color.RGBA{R: 15, G: 25, B: 50, A: 255},
+		TitleColor:        Orange,
+		TextColorNormal:   White,
+		TextColorSelected: BrightOrange,
+		TitleY:            50,
+		MenuStartY:        100,
+		MenuItemHeight:    30,
+		MenuItemGap:       12,
+		MenuOptions:       []string{"Multiplayer", "Settings", "Exit"},
 	}
 
 	// Game Over Config
@@ -741,8 +734,7 @@ func init() {
 
 	// Debug Config (defaults, can be overridden by CLI flags)
 	Debug = DebugConfig{
-		SkipMenu:        false,
-		StartCheckpoint: -1,
+		SkipMenu: false,
 	}
 
 	// Message Config

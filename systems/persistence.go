@@ -11,6 +11,9 @@ import (
 	"github.com/yohamta/donburi/ecs"
 )
 
+// Note: Game progress (checkpoints, save game) has been removed.
+// This file now only handles settings persistence.
+
 // SavedSettings represents the settings data stored on disk
 type SavedSettings struct {
 	MusicVolume     float64 `json:"musicVolume"`
@@ -162,89 +165,4 @@ func ApplySavedSettingsGlobal(saved *SavedSettings) {
 		res := cfg.SettingsMenu.Resolutions[saved.ResolutionIndex]
 		ebiten.SetWindowSize(res.Width, res.Height)
 	}
-}
-
-type SavedGameProgress struct {
-	LevelIndex       int     `json:"levelIndex"`
-	CheckpointID     float64 `json:"checkpointId"`
-	CheckpointSpawnX float64 `json:"checkpointSpawnX"`
-	CheckpointSpawnY float64 `json:"checkpointSpawnY"`
-}
-
-func LoadGameProgress() (*SavedGameProgress, error) {
-	if !gdataInitialized || gdataManager == nil {
-		return nil, nil
-	}
-
-	data, err := gdataManager.LoadItem("progress")
-	if err != nil {
-		log.Printf("Warning: Could not load game progress: %v", err)
-		return nil, nil
-	}
-	if data == nil || len(data) == 0 {
-		return nil, nil
-	}
-
-	var progress SavedGameProgress
-	if err := json.Unmarshal(data, &progress); err != nil {
-		log.Printf("Warning: Could not parse saved progress: %v", err)
-		return nil, err
-	}
-
-	return &progress, nil
-}
-
-func SaveGameProgress(levelIndex int, checkpoint *components.ActiveCheckpointData) error {
-	if !gdataInitialized || gdataManager == nil || checkpoint == nil {
-		return nil
-	}
-
-	progress := &SavedGameProgress{
-		LevelIndex:       levelIndex,
-		CheckpointID:     checkpoint.CheckpointID,
-		CheckpointSpawnX: checkpoint.SpawnX,
-		CheckpointSpawnY: checkpoint.SpawnY,
-	}
-
-	data, err := json.Marshal(progress)
-	if err != nil {
-		log.Printf("Warning: Could not serialize game progress: %v", err)
-		return err
-	}
-
-	if err := gdataManager.SaveItem("progress", data); err != nil {
-		log.Printf("Warning: Could not save game progress: %v", err)
-		return err
-	}
-
-	return nil
-}
-
-// HasSaveGame returns true if a saved game progress exists
-func HasSaveGame() bool {
-	if !gdataInitialized || gdataManager == nil {
-		return false
-	}
-
-	data, err := gdataManager.LoadItem("progress")
-	if err != nil || data == nil || len(data) == 0 {
-		return false
-	}
-
-	return true
-}
-
-// ClearGameProgress removes any saved game progress
-func ClearGameProgress() error {
-	if !gdataInitialized || gdataManager == nil {
-		return nil
-	}
-
-	// Save empty/nil data to clear the progress
-	if err := gdataManager.SaveItem("progress", nil); err != nil {
-		log.Printf("Warning: Could not clear game progress: %v", err)
-		return err
-	}
-
-	return nil
 }

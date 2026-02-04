@@ -64,7 +64,7 @@ func handlePlayerDeath(ecs *ecs.ECS, e *donburi.Entry) {
 	RespawnPlayerNearDeath(ecs, e)
 }
 
-// RespawnPlayer resets the player to checkpoint with full health and lives.
+// RespawnPlayer resets the player to default spawn with full health and lives.
 func RespawnPlayer(ecs *ecs.ECS, e *donburi.Entry) {
 	levelEntry, ok := components.Level.First(ecs.World)
 	if !ok {
@@ -72,19 +72,12 @@ func RespawnPlayer(ecs *ecs.ECS, e *donburi.Entry) {
 	}
 	levelData := components.Level.Get(levelEntry)
 
-	var spawnX, spawnY float64
-	if levelData.ActiveCheckpoint != nil {
-		spawnX = levelData.ActiveCheckpoint.SpawnX
-		spawnY = levelData.ActiveCheckpoint.SpawnY
-	} else if len(levelData.CurrentLevel.PlayerSpawns) > 0 {
-		spawn := levelData.CurrentLevel.PlayerSpawns[0]
-		spawnX = spawn.X
-		spawnY = spawn.Y
-	} else {
+	if len(levelData.CurrentLevel.PlayerSpawns) == 0 {
 		return
 	}
+	spawn := levelData.CurrentLevel.PlayerSpawns[0]
 
-	resetPlayerAtPosition(e, spawnX, spawnY)
+	resetPlayerAtPosition(e, spawn.X, spawn.Y)
 
 	lives := components.Lives.Get(e)
 	lives.Lives = lives.MaxLives

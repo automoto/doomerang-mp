@@ -77,11 +77,6 @@ var (
 		components.Animation,
 		components.AutoDestroy,
 	)
-	Checkpoint = newArchetype(
-		tags.Checkpoint,
-		components.Checkpoint,
-		components.Object,
-	)
 	Fire = newArchetype(
 		tags.Fire,
 		components.Fire,
@@ -90,11 +85,6 @@ var (
 	)
 	MessagePoint = newArchetype(
 		components.MessagePoint,
-	)
-	FinishLine = newArchetype(
-		tags.FinishLine,
-		components.FinishLine,
-		components.Object,
 	)
 )
 

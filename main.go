@@ -2,7 +2,6 @@ package main
 
 import (
 	_ "embed"
-	"flag"
 	"image"
 	"log"
 
@@ -65,16 +64,6 @@ func (g *Game) Layout(width, height int) (int, int) {
 }
 
 func main() {
-	// Parse command-line flags for debug/testing
-	checkpoint := flag.Float64("checkpoint", -1, "Checkpoint ID to spawn at (skips menu)")
-	flag.Float64Var(checkpoint, "c", -1, "Checkpoint ID (shorthand)")
-	flag.Parse()
-
-	if *checkpoint >= 0 {
-		config.Debug.StartCheckpoint = *checkpoint
-		config.Debug.SkipMenu = true
-	}
-
 	// Start pprof server for memory profiling
 	// Usage: go tool pprof http://localhost:6060/debug/pprof/heap
 	// go func() {
@@ -94,7 +83,6 @@ func main() {
 	if saved, err := systems.LoadSettings(); err == nil && saved != nil {
 		systems.ApplySavedSettingsGlobal(saved)
 	}
-
 
 	if err := ebiten.RunGame(NewGame()); err != nil {
 		log.Fatal(err)
