@@ -1,0 +1,42 @@
+# Binaries for programs and plugins
+*.exe
+*.dll
+*.so
+*.dylib
+doomerang
+
+# Test binary, built with `go test -c`
+*.test
+
+# Dependency directories (remove the comment below to include it)
+vendor/
+
+# Go module cache
+# This is where Go stores downloaded modules.
+# It's usually located in your user's home directory,
+# but if you've configured GOPATH to be inside your project,
+# you might want to ignore it.
+# $GOPATH/pkg/mod/
+
+# Build output
+bin/
+dist/
+test/*
+
+# IDE specific files
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Agent, Roo rules and Cursor files
+.roo/
+.cursor/
+agent/
+.claude/
+CLAUDE.local.md
+
+# assets
+assets/art-archive/
