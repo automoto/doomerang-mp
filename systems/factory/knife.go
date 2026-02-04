@@ -3,11 +3,11 @@ package factory
 import (
 	"math"
 
-	"github.com/automoto/doomerang/archetypes"
-	"github.com/automoto/doomerang/assets"
-	"github.com/automoto/doomerang/components"
-	"github.com/automoto/doomerang/config"
-	"github.com/automoto/doomerang/tags"
+	"github.com/automoto/doomerang-mp/archetypes"
+	"github.com/automoto/doomerang-mp/assets"
+	"github.com/automoto/doomerang-mp/components"
+	"github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/tags"
 	"github.com/solarlune/resolv"
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"

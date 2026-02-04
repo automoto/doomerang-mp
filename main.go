@@ -6,10 +6,10 @@ import (
 	"image"
 	"log"
 
-	"github.com/automoto/doomerang/config"
-	"github.com/automoto/doomerang/fonts"
-	"github.com/automoto/doomerang/scenes"
-	"github.com/automoto/doomerang/systems"
+	"github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/fonts"
+	"github.com/automoto/doomerang-mp/scenes"
+	"github.com/automoto/doomerang-mp/systems"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 

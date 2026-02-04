@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"image"
 
-	"github.com/automoto/doomerang/assets"
-	"github.com/automoto/doomerang/assets/animations"
-	"github.com/automoto/doomerang/components"
-	cfg "github.com/automoto/doomerang/config"
+	"github.com/automoto/doomerang-mp/assets"
+	"github.com/automoto/doomerang-mp/assets/animations"
+	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 

@@ -3,11 +3,11 @@ package systems
 import (
 	"image/color"
 
-	"github.com/automoto/doomerang/archetypes"
-	"github.com/automoto/doomerang/components"
-	cfg "github.com/automoto/doomerang/config"
-	"github.com/automoto/doomerang/systems/factory"
-	"github.com/automoto/doomerang/tags"
+	"github.com/automoto/doomerang-mp/archetypes"
+	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/systems/factory"
+	"github.com/automoto/doomerang-mp/tags"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/solarlune/resolv"

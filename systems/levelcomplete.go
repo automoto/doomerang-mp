@@ -3,9 +3,9 @@ package systems
 import (
 	"os"
 
-	"github.com/automoto/doomerang/components"
-	cfg "github.com/automoto/doomerang/config"
-	"github.com/automoto/doomerang/fonts"
+	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/fonts"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/hajimehoshi/ebiten/v2/vector"

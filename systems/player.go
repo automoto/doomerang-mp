@@ -1,10 +1,10 @@
 package systems
 
 import (
-	cfg "github.com/automoto/doomerang/config"
+	cfg "github.com/automoto/doomerang-mp/config"
 
-	"github.com/automoto/doomerang/components"
-	"github.com/automoto/doomerang/systems/factory"
+	"github.com/automoto/doomerang-mp/components"
+	"github.com/automoto/doomerang-mp/systems/factory"
 	"github.com/solarlune/resolv"
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"

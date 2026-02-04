@@ -1,8 +1,8 @@
 package systems
 
 import (
-	"github.com/automoto/doomerang/components"
-	cfg "github.com/automoto/doomerang/config"
+	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"
 )

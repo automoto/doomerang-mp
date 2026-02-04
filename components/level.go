@@ -1,7 +1,7 @@
 package components
 
 import (
-	"github.com/automoto/doomerang/assets"
+	"github.com/automoto/doomerang-mp/assets"
 	"github.com/yohamta/donburi"
 )
 

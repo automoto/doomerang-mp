@@ -4,9 +4,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/automoto/doomerang/assets"
-	"github.com/automoto/doomerang/components"
-	cfg "github.com/automoto/doomerang/config"
+	"github.com/automoto/doomerang-mp/assets"
+	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/yohamta/donburi/ecs"
 )

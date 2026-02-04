@@ -3,8 +3,8 @@ package systems
 import (
 	"strings"
 
-	"github.com/automoto/doomerang/components"
-	cfg "github.com/automoto/doomerang/config"
+	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/yohamta/donburi/ecs"
 )

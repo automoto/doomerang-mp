@@ -1,8 +1,8 @@
 package components
 
 import (
-	"github.com/automoto/doomerang/assets/animations"
-	"github.com/automoto/doomerang/config"
+	"github.com/automoto/doomerang-mp/assets/animations"
+	"github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/yohamta/donburi"
 )

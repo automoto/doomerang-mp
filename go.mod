@@ -1,4 +1,4 @@
-module github.com/automoto/doomerang
+module github.com/automoto/doomerang-mp
 
 go 1.24.0
 
@@ -8,6 +8,7 @@ require (
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/hajimehoshi/ebiten/v2 v2.9.7
 	github.com/lafriks/go-tiled v0.13.0
+	github.com/leap-fish/necs v0.0.5-0.20250625124528-82c5928cb7a1
 	github.com/quasilyte/gdata v0.8.1
 	github.com/solarlune/resolv v0.6.0
 	github.com/tanema/gween v0.0.0-20221212145351-621cc8a459d1
@@ -16,11 +17,13 @@ require (
 )
 
 require (
+	github.com/coder/websocket v1.8.12 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/ebitengine/gomobile v0.0.0-20250923094054-ea854a63cce1 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/oto/v3 v3.4.0 // indirect
 	github.com/ebitengine/purego v0.9.0 // indirect
+	github.com/hashicorp/go-msgpack/v2 v2.1.2 // indirect
 	github.com/jezek/xgb v1.1.1 // indirect
 	github.com/jfreymuth/oggvorbis v1.0.5 // indirect
 	github.com/jfreymuth/vorbis v1.0.2 // indirect

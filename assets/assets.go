@@ -7,7 +7,7 @@ import (
 	"image"
 	"path/filepath"
 
-	"github.com/automoto/doomerang/config"
+	"github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/lafriks/go-tiled"

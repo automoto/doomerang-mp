@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/automoto/doomerang/components"
-	cfg "github.com/automoto/doomerang/config"
+	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/quasilyte/gdata"
 	"github.com/yohamta/donburi/ecs"

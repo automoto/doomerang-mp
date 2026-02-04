@@ -5,6 +5,42 @@ Add competitive PvP multiplayer to Doomerang using the [necs](https://github.com
 
 ---
 
+## Current Progress
+
+**Completed:**
+- Milestone 1 - Foundation & Shared Code ✓
+- Milestone 2 - Basic Server ✓
+
+**Next Step:** Milestone 2b - Single-Player Cleanup
+- Remove level progression, checkpoints, local save/load
+- Update pause menu and game over for multiplayer
+
+**Then:** Milestone 3 - Server Browser & Connection
+
+**Notes:**
+- Updated necs to v0.0.5 (commit 82c5928) which includes full srvsync, clisync, router, and transports
+- `esync.RegisterComponent()` now supports `esync.WithInterpFn()` for client-side interpolation
+- Server uses 20 tick/sec by default (configurable via `--tickrate` flag)
+- All import paths updated to `github.com/automoto/doomerang-mp` module name
+
+**Files Created (Milestone 1):**
+- `shared/netcomponents/position.go` - NetPosition + LerpNetPosition
+- `shared/netcomponents/velocity.go` - NetVelocity + LerpNetVelocity
+- `shared/netcomponents/playerstate.go` - NetPlayerState
+- `shared/netcomponents/boomerang.go` - NetBoomerang + LerpNetBoomerang
+- `shared/netcomponents/enemy.go` - NetEnemy + LerpNetEnemy
+- `shared/netcomponents/gamestate.go` - NetGameState + MatchState enum
+- `shared/protocol/register.go` - RegisterComponents() with sync IDs 10-15 + interpolation
+- `shared/messages/input.go` - PlayerInput message type
+- `shared/messages/events.go` - HitEvent, DeathEvent, SpawnEvent, etc.
+
+**Files Created (Milestone 2):**
+- `server/cmd/server/main.go` - Server entry point with --port and --tickrate flags
+- `server/core/server.go` - Server struct, WebSocket setup, player spawn/despawn
+- `server/core/loop.go` - Tick-based game loop with srvsync.DoSync()
+
+---
+
 ## Milestone 1: Foundation & Shared Code
 
 ### Design
@@ -37,17 +73,20 @@ network/                # Client network code (new)
 | 15 | NetGameState | No | Scores, timer, match state |
 
 ### Implementation Tasks
-- [ ] Add necs dependency to go.mod
-- [ ] Create `shared/` directory structure
-- [ ] Define `NetPosition` component (X, Y float64)
-- [ ] Define `NetVelocity` component (SpeedX, SpeedY float64)
-- [ ] Define `NetPlayerState` component (StateID, Direction, Health, IsLocal)
-- [ ] Define `NetBoomerang` component (OwnerID, State, DistanceTraveled)
-- [ ] Define `NetEnemy` component (TypeName, State, Health)
-- [ ] Define `NetGameState` singleton component (Scores map, Timer, MatchState)
-- [ ] Create `shared/protocol/register.go` with ID constants and registration function
-- [ ] Create `shared/messages/input.go` with PlayerInput message type
-- [ ] Create `shared/messages/events.go` with game event message types
+- [x] Add necs dependency to go.mod
+- [x] Create `shared/` directory structure
+- [x] Define `NetPosition` component (X, Y float64) + LerpNetPosition
+- [x] Define `NetVelocity` component (SpeedX, SpeedY float64) + LerpNetVelocity
+- [x] Define `NetPlayerState` component (StateID, Direction, Health, IsLocal)
+- [x] Define `NetBoomerang` component (OwnerID, State, DistanceTraveled) + LerpNetBoomerang
+- [x] Define `NetEnemy` component (TypeName, State, Health) + LerpNetEnemy
+- [x] Define `NetGameState` singleton component (Scores map, Timer, MatchState)
+- [x] Create `shared/protocol/register.go` with ID constants and registration function
+- [x] Create `shared/messages/input.go` with PlayerInput message type
+- [x] Create `shared/messages/events.go` with game event message types
+- [x] Update all import paths from `github.com/automoto/doomerang` to `github.com/automoto/doomerang-mp`
+
+**Status: COMPLETE** ✓
 
 ---
 
@@ -64,23 +103,66 @@ A headless game server that accepts WebSocket connections, manages the ECS world
 5. On disconnect: remove player entity, notify other clients
 
 ### Implementation Tasks
-- [ ] Create `server/cmd/server/main.go` entry point
-- [ ] Create `server/core/server.go` with Server struct
-- [ ] Implement WebSocket server setup with necs transports
-- [ ] Create `server/core/loop.go` with tick-based game loop
-- [ ] Register components with `srvsync.UseEsync(world)`
-- [ ] Implement `router.OnConnect` - spawn player entity
-- [ ] Implement `router.OnDisconnect` - remove player entity
-- [ ] Call `srvsync.DoSync()` each tick to broadcast state
-- [ ] Add server to Makefile: `make server`
+- [x] Create `server/cmd/server/main.go` entry point
+- [x] Create `server/core/server.go` with Server struct
+- [x] Implement WebSocket server setup with necs transports
+- [x] Create `server/core/loop.go` with tick-based game loop
+- [x] Register components with `srvsync.UseEsync(world)`
+- [x] Implement `router.OnConnect` - spawn player entity
+- [x] Implement `router.OnDisconnect` - remove player entity
+- [x] Call `srvsync.DoSync()` each tick to broadcast state
+- [x] Add server to Makefile: `make server` and `make run-server`
 
-### Files to Create
+### Files Created
 | File | Purpose |
 |------|---------|
-| `server/cmd/server/main.go` | Server entry point |
-| `server/core/server.go` | Server struct, connection handling |
-| `server/core/loop.go` | Game loop, tick timing |
-| `server/core/subsystem.go` | Subsystem interface |
+| `server/cmd/server/main.go` | Server entry point with flags |
+| `server/core/server.go` | Server struct, connection handling, player spawn/despawn |
+| `server/core/loop.go` | Game loop at configurable tick rate |
+
+**Status: COMPLETE** ✓
+
+---
+
+## Milestone 2b: Single-Player Cleanup
+
+### Design
+Remove single-player only features and code that won't be used in the multiplayer version. This simplifies the codebase and clarifies what's client vs server responsibility.
+
+### Features to Remove
+| Feature | Files Affected | Reason |
+|---------|---------------|--------|
+| Level progression | `systems/levelcomplete.go`, `systems/finishline.go` | MP uses match-based rounds, not level progression |
+| Checkpoints | `systems/checkpoint.go`, `systems/factory/checkpoint.go` | No checkpoints in PvP - respawn at spawn points |
+| Pause menu (single-player) | `systems/pause.go` | MP can't pause - replace with disconnect/settings |
+| Local save/load | `systems/persistence.go` | Server manages match state |
+| Game over (single-player) | `scenes/gameover.go`, `systems/gameover.go` | Replace with match results screen |
+
+### Files to Remove
+- [ ] `systems/levelcomplete.go` - Level completion logic
+- [ ] `systems/finishline.go` - Finish line detection
+- [ ] `systems/factory/finishline.go` - Finish line factory
+- [ ] `systems/checkpoint.go` - Checkpoint system
+- [ ] `systems/factory/checkpoint.go` - Checkpoint factory
+- [ ] `systems/persistence.go` - Local game save/load
+
+### Files to Modify
+- [ ] `systems/pause.go` - Convert to multiplayer menu (disconnect, settings)
+- [ ] `scenes/gameover.go` - Convert to match results screen
+- [ ] `systems/gameover.go` - Convert to match end logic
+- [ ] `scenes/menu.go` - Remove "Continue" option, add "Multiplayer" button
+- [ ] `archetypes/archetypes.go` - Remove Checkpoint, FinishLine archetypes
+- [ ] `components/` - Remove checkpoint-related components if any
+
+### Implementation Tasks
+- [ ] Remove level progression systems and factories
+- [ ] Remove checkpoint systems and factories
+- [ ] Update pause menu for multiplayer (disconnect option)
+- [ ] Convert game over to match results
+- [ ] Update main menu (remove Continue, add Multiplayer)
+- [ ] Clean up unused archetypes and components
+- [ ] Update any remaining references
+- [ ] Verify game still builds: `go build ./...`
 
 ---
 

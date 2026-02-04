@@ -1,7 +1,7 @@
 package components
 
 import (
-	cfg "github.com/automoto/doomerang/config"
+	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/yohamta/donburi"
 )
 

@@ -1,7 +1,7 @@
 package systems
 
 import (
-	"github.com/automoto/doomerang/components"
+	"github.com/automoto/doomerang-mp/components"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/yohamta/donburi/ecs"
 )

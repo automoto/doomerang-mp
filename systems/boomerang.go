@@ -3,10 +3,10 @@ package systems
 import (
 	"math"
 
-	"github.com/automoto/doomerang/components"
-	cfg "github.com/automoto/doomerang/config"
-	"github.com/automoto/doomerang/systems/factory"
-	"github.com/automoto/doomerang/tags"
+	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/systems/factory"
+	"github.com/automoto/doomerang-mp/tags"
 	"github.com/solarlune/resolv"
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"

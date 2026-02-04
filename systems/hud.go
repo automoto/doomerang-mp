@@ -3,8 +3,8 @@ package systems
 import (
 	"image/color"
 
-	"github.com/automoto/doomerang/assets"
-	"github.com/automoto/doomerang/components"
+	"github.com/automoto/doomerang-mp/assets"
+	"github.com/automoto/doomerang-mp/components"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/yohamta/donburi"

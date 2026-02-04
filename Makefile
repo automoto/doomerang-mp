@@ -5,7 +5,7 @@ DIST_DIR := dist
 ITCH_USER := gamekaizen
 ITCH_GAME := doomerang
 
-.PHONY: lint run build basic-test \
+.PHONY: lint run build basic-test server run-server \
 	build-mac build-mac-intel build-windows build-linux build-web build-all \
 	deploy-mac deploy-mac-intel deploy-windows deploy-linux deploy-web deploy-all \
 	clean-dist
@@ -21,6 +21,13 @@ run: vendor
 
 build:
 	go build .
+
+# Server targets
+server:
+	go build -o $(DIST_DIR)/server/doomerang-server ./server/cmd/server
+
+run-server:
+	go run ./server/cmd/server
 
 basic-test:
 	./scripts/basic-test.sh

@@ -1,9 +1,9 @@
 package factory
 
 import (
-	"github.com/automoto/doomerang/archetypes"
-	"github.com/automoto/doomerang/assets"
-	"github.com/automoto/doomerang/components"
+	"github.com/automoto/doomerang-mp/archetypes"
+	"github.com/automoto/doomerang-mp/assets"
+	"github.com/automoto/doomerang-mp/components"
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"
 )

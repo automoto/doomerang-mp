@@ -4,8 +4,8 @@ import (
 	"image/color"
 	"sync"
 
-	cfg "github.com/automoto/doomerang/config"
-	"github.com/automoto/doomerang/systems"
+	cfg "github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/systems"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"
