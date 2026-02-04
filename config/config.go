@@ -290,6 +290,27 @@ type CameraConfig struct {
 	LookAheadSpeedThreshold float64 // Minimum speed to update look-ahead
 }
 
+// GameModeID represents different game modes
+type GameModeID int
+
+const (
+	GameModeFreeForAll GameModeID = iota // All players compete, most KOs wins
+	GameMode1v1                          // Two players, most KOs wins
+	GameMode2v2                          // Teams, combined KO count wins
+	GameModeCoopVsBots                   // All humans vs AI enemies
+)
+
+// MatchConfig contains match-related configuration values
+type MatchConfig struct {
+	DefaultDuration    int        // Match duration in frames (60 * seconds)
+	CountdownDuration  int        // Pre-match countdown in frames
+	RespawnDelay       int        // Frames before respawn after death
+	DefaultGameMode    GameModeID // Default game mode
+	MaxPlayers         int        // Maximum players per match
+	MinPlayersToStart  int        // Minimum players to start match
+	ResultsDisplayTime int        // Frames to display results before returning to menu
+}
+
 // DeathZoneConfig contains death zone effect configuration
 type DeathZoneConfig struct {
 	RespawnDelayFrames   int     // Frames before respawn (~0.75s at 60fps)
@@ -348,6 +369,7 @@ var Debug DebugConfig
 var Message MessageConfig
 var LevelComplete LevelCompleteConfig
 var Camera CameraConfig
+var Match MatchConfig
 
 // DebugConfig contains debug/testing command-line options
 type DebugConfig struct {
@@ -790,5 +812,16 @@ func init() {
 		LookAheadSmoothing:      0.05, // Slower than follow for smooth feel
 		LookAheadMovingScale:    1.0,
 		LookAheadSpeedThreshold: 0.1, // Minimum speed to update look-ahead
+	}
+
+	// Match Config
+	Match = MatchConfig{
+		DefaultDuration:    60 * 120, // 2 minutes at 60fps
+		CountdownDuration:  60 * 3,   // 3 seconds countdown
+		RespawnDelay:       60 * 2,   // 2 seconds respawn delay
+		DefaultGameMode:    GameModeFreeForAll,
+		MaxPlayers:         4,
+		MinPlayersToStart:  1,
+		ResultsDisplayTime: 60 * 5, // 5 seconds to show results
 	}
 }

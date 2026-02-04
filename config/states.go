@@ -2,6 +2,16 @@ package config
 
 type StateID int
 
+// MatchStateID represents the current state of a match
+type MatchStateID int
+
+const (
+	MatchStateWaiting   MatchStateID = iota // Waiting for players/setup
+	MatchStateCountdown                     // Pre-match countdown (3, 2, 1)
+	MatchStatePlaying                       // Active gameplay
+	MatchStateFinished                      // Match over, showing results
+)
+
 const (
 	StateNone StateID = -1
 

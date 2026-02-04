@@ -37,6 +37,10 @@ const gameOverDelayFrames = 30
 func handlePlayerDeath(ecs *ecs.ECS, e *donburi.Entry) {
 	lives := components.Lives.Get(e)
 	death := components.Death.Get(e)
+	playerData := components.Player.Get(e)
+
+	// Track KO/death in match scores
+	trackMatchScore(ecs, playerData.PlayerIndex, death.LastAttackerIndex)
 
 	// Game over delay expired - remove player
 	if lives.Lives <= 0 {
@@ -62,6 +66,23 @@ func handlePlayerDeath(ecs *ecs.ECS, e *donburi.Entry) {
 
 	donburi.Remove[components.DeathData](e, components.Death)
 	RespawnPlayerNearDeath(ecs, e)
+}
+
+// trackMatchScore updates match scores when a player dies
+func trackMatchScore(ecs *ecs.ECS, victimIndex, attackerIndex int) {
+	matchEntry, ok := components.Match.First(ecs.World)
+	if !ok {
+		return
+	}
+	match := components.Match.Get(matchEntry)
+
+	// Record death for victim
+	match.AddDeath(victimIndex)
+
+	// Award KO to attacker (if not self-kill or environment)
+	if attackerIndex >= 0 && attackerIndex != victimIndex {
+		match.AddKO(attackerIndex)
+	}
 }
 
 // RespawnPlayer resets the player to default spawn with full health and lives.

@@ -32,7 +32,13 @@ func (ps *PlatformerScene) Update() {
 	ps.once.Do(ps.configure)
 	ps.ecs.Update()
 
-	// Check for game over (player has 0 lives)
+	// Check for match finished - return to menu
+	if systems.IsMatchFinished(ps.ecs) {
+		ps.sceneChanger.ChangeScene(NewMenuScene(ps.sceneChanger))
+		return
+	}
+
+	// Check for game over (all players eliminated)
 	if ps.checkGameOver() {
 		ps.sceneChanger.ChangeScene(NewGameOverScene(ps.sceneChanger))
 	}
@@ -93,6 +99,9 @@ func (ps *PlatformerScene) configure() {
 	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateEffects))
 	ecs.AddSystem(systems.WithGameplayChecks(systems.UpdateMessage))
 
+	// Match system runs always (handles countdown, timer, results)
+	ecs.AddSystem(systems.UpdateMatch)
+
 	// Systems that run even when paused
 	ecs.AddSystem(systems.UpdateSettings)
 	ecs.AddSystem(systems.UpdateSettingsMenu)
@@ -105,6 +114,7 @@ func (ps *PlatformerScene) configure() {
 	ecs.AddRenderer(cfg.Default, systems.DrawHealthBars)
 	ecs.AddRenderer(cfg.Default, systems.DrawHitboxes)
 	ecs.AddRenderer(cfg.Default, systems.DrawHUD)
+	ecs.AddRenderer(cfg.Default, systems.DrawMatchHUD)
 	ecs.AddRenderer(cfg.Default, systems.DrawMessage)
 	ecs.AddRenderer(cfg.Default, systems.DrawDebug)
 	ecs.AddRenderer(cfg.Default, systems.DrawPause)
@@ -197,6 +207,9 @@ func (ps *PlatformerScene) configure() {
 		camera.Position.Y = firstPlayerSpawn.Y
 	}
 
+	// Create match entity and start countdown
+	createMatch(ps.ecs, numPlayers)
+
 	// Spawn enemies for the current level
 	for _, spawn := range levelData.CurrentLevel.EnemySpawns {
 		// Use the enemy type from the spawn data, default to "Guard" if not specified
@@ -211,4 +224,29 @@ func (ps *PlatformerScene) configure() {
 
 	// Start level music
 	systems.PlayLevelMusic(ps.ecs, levelData.CurrentLevel.Name)
+}
+
+// createMatch creates the match entity and initializes match state
+func createMatch(e *ecs.ECS, numPlayers int) {
+	matchEntry := e.World.Entry(e.World.Create(components.Match))
+
+	// Initialize scores for all players
+	scores := make([]components.PlayerScore, numPlayers)
+	for i := 0; i < numPlayers; i++ {
+		scores[i] = components.PlayerScore{
+			PlayerIndex: i,
+			Team:        -1, // FFA mode
+		}
+	}
+
+	components.Match.SetValue(matchEntry, components.MatchData{
+		State:          cfg.MatchStateCountdown,
+		GameMode:       cfg.Match.DefaultGameMode,
+		Timer:          cfg.Match.CountdownDuration,
+		Duration:       cfg.Match.DefaultDuration,
+		Scores:         scores,
+		WinnerIndex:    -2, // No winner yet
+		WinningTeam:    -1,
+		CountdownValue: 3,
+	})
 }
