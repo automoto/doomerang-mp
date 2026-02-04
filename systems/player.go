@@ -11,11 +11,12 @@ import (
 )
 
 func UpdatePlayer(ecs *ecs.ECS) {
-	playerEntry, ok := components.Player.First(ecs.World)
-	if !ok {
-		return
-	}
+	components.Player.Each(ecs.World, func(playerEntry *donburi.Entry) {
+		updateSinglePlayer(ecs, playerEntry)
+	})
+}
 
+func updateSinglePlayer(ecs *ecs.ECS, playerEntry *donburi.Entry) {
 	// If the player is in death sequence, only advance animation and return.
 	// The entity will be removed by the death system.
 	if playerEntry.HasComponent(components.Death) {
@@ -25,8 +26,11 @@ func UpdatePlayer(ecs *ecs.ECS) {
 		return
 	}
 
-	// Get input state
-	input := getOrCreateInput(ecs)
+	// Get per-player input state
+	input := components.PlayerInput.Get(playerEntry)
+	if input == nil {
+		return
+	}
 
 	player := components.Player.Get(playerEntry)
 	physics := components.Physics.Get(playerEntry)
@@ -44,13 +48,13 @@ func UpdatePlayer(ecs *ecs.ECS) {
 	}
 }
 
-func handlePlayerInput(e *ecs.ECS, input *components.InputData, player *components.PlayerData, physics *components.PhysicsData, melee *components.MeleeAttackData, state *components.StateData, playerObject *resolv.Object) {
-	// Get action states from input component
-	attackAction := GetAction(input, cfg.ActionAttack)
-	jumpAction := GetAction(input, cfg.ActionJump)
-	crouchAction := GetAction(input, cfg.ActionCrouch)
-	moveLeftAction := GetAction(input, cfg.ActionMoveLeft)
-	moveRightAction := GetAction(input, cfg.ActionMoveRight)
+func handlePlayerInput(e *ecs.ECS, input *components.PlayerInputData, player *components.PlayerData, physics *components.PhysicsData, melee *components.MeleeAttackData, state *components.StateData, playerObject *resolv.Object) {
+	// Get action states from player input component
+	attackAction := GetPlayerAction(input, cfg.ActionAttack)
+	jumpAction := GetPlayerAction(input, cfg.ActionJump)
+	crouchAction := GetPlayerAction(input, cfg.ActionCrouch)
+	moveLeftAction := GetPlayerAction(input, cfg.ActionMoveLeft)
+	moveRightAction := GetPlayerAction(input, cfg.ActionMoveRight)
 
 	// Process combat and jump inputs only if not in a locked state
 	if !isInLockedState(state.CurrentState) {
@@ -162,12 +166,12 @@ func handleMovementInput(moveLeftAction, moveRightAction components.ActionState,
 	}
 }
 
-func updatePlayerState(ecs *ecs.ECS, input *components.InputData, playerEntry *donburi.Entry, player *components.PlayerData, physics *components.PhysicsData, melee *components.MeleeAttackData, state *components.StateData, animData *components.AnimationData) {
+func updatePlayerState(ecs *ecs.ECS, input *components.PlayerInputData, playerEntry *donburi.Entry, player *components.PlayerData, physics *components.PhysicsData, melee *components.MeleeAttackData, state *components.StateData, animData *components.AnimationData) {
 	state.StateTimer++
 
-	// Get action states from input component
-	boomerangAction := GetAction(input, cfg.ActionBoomerang)
-	crouchAction := GetAction(input, cfg.ActionCrouch)
+	// Get action states from player input component
+	boomerangAction := GetPlayerAction(input, cfg.ActionBoomerang)
+	crouchAction := GetPlayerAction(input, cfg.ActionCrouch)
 
 	// Get player object for hitbox modifications
 	playerObject := components.Object.Get(playerEntry).Object
@@ -357,11 +361,11 @@ func updatePlayerState(ecs *ecs.ECS, input *components.InputData, playerEntry *d
 
 // calculateBoomerangAim returns the aim direction vector based on input.
 // Returns (aimX, aimY) where the vector represents the throw direction.
-func calculateBoomerangAim(input *components.InputData, facingX float64) (aimX, aimY float64) {
-	upAction := GetAction(input, cfg.ActionMoveUp)
-	downAction := GetAction(input, cfg.ActionCrouch) // Down/Crouch key for aiming down
-	leftAction := GetAction(input, cfg.ActionMoveLeft)
-	rightAction := GetAction(input, cfg.ActionMoveRight)
+func calculateBoomerangAim(input *components.PlayerInputData, facingX float64) (aimX, aimY float64) {
+	upAction := GetPlayerAction(input, cfg.ActionMoveUp)
+	downAction := GetPlayerAction(input, cfg.ActionCrouch) // Down/Crouch key for aiming down
+	leftAction := GetPlayerAction(input, cfg.ActionMoveLeft)
+	rightAction := GetPlayerAction(input, cfg.ActionMoveRight)
 
 	horizontal := leftAction.Pressed || rightAction.Pressed
 
@@ -473,9 +477,9 @@ func absFloat(x float64) float64 {
 	return x
 }
 
-func applyCrouchMovement(input *components.InputData, player *components.PlayerData, physics *components.PhysicsData) {
-	left := GetAction(input, cfg.ActionMoveLeft).Pressed
-	right := GetAction(input, cfg.ActionMoveRight).Pressed
+func applyCrouchMovement(input *components.PlayerInputData, player *components.PlayerData, physics *components.PhysicsData) {
+	left := GetPlayerAction(input, cfg.ActionMoveLeft).Pressed
+	right := GetPlayerAction(input, cfg.ActionMoveRight).Pressed
 
 	switch {
 	case right:

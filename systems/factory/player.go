@@ -5,12 +5,21 @@ import (
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/tags"
+	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/solarlune/resolv"
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"
 )
 
-func CreatePlayer(ecs *ecs.ECS, x, y float64) *donburi.Entry {
+// PlayerInputConfig defines how a player receives input.
+type PlayerInputConfig struct {
+	PlayerIndex  int                   // 0-3 player index
+	GamepadID    *ebiten.GamepadID     // Bound gamepad (nil = keyboard)
+	KeyboardZone int                   // KeyboardZoneWASD, KeyboardZoneArrows, or KeyboardZoneNone
+}
+
+// CreatePlayer creates a player entity with the given input configuration.
+func CreatePlayer(ecs *ecs.ECS, x, y float64, inputCfg PlayerInputConfig) *donburi.Entry {
 	player := archetypes.Player.Spawn(ecs)
 
 	obj := resolv.NewObject(x, y, float64(cfg.Player.CollisionWidth), float64(cfg.Player.CollisionHeight))
@@ -21,6 +30,12 @@ func CreatePlayer(ecs *ecs.ECS, x, y float64) *donburi.Entry {
 		Direction:    components.Vector{X: 1, Y: 0},
 		ComboCounter: 0,
 		InvulnFrames: 0,
+	})
+	components.PlayerInput.SetValue(player, components.PlayerInputData{
+		PlayerIndex:    inputCfg.PlayerIndex,
+		BoundGamepadID: inputCfg.GamepadID,
+		KeyboardZone:   inputCfg.KeyboardZone,
+		InputMethod:    getDefaultInputMethod(inputCfg),
 	})
 	components.State.SetValue(player, components.StateData{
 		CurrentState:  cfg.Idle,
@@ -56,4 +71,11 @@ func CreatePlayer(ecs *ecs.ECS, x, y float64) *donburi.Entry {
 	})
 
 	return player
+}
+
+func getDefaultInputMethod(inputCfg PlayerInputConfig) components.InputMethod {
+	if inputCfg.GamepadID != nil {
+		return components.InputXbox
+	}
+	return components.InputKeyboard
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"
 )
 
@@ -166,6 +167,103 @@ func getOrCreateInput(ecs *ecs.ECS) *components.InputData {
 func GetAction(input *components.InputData, id cfg.ActionID) components.ActionState {
 	curr := input.Current[id]
 	prev := input.Previous[id]
+	return components.ActionState{
+		Pressed:      curr,
+		JustPressed:  curr && !prev,
+		JustReleased: !curr && prev,
+	}
+}
+
+// UpdateMultiPlayerInput polls input for all player entities with PlayerInputData.
+// Must run AFTER UpdateInput (which handles global/menu input).
+func UpdateMultiPlayerInput(ecs *ecs.ECS) {
+	gamepadIDs = ebiten.AppendGamepadIDs(gamepadIDs[:0])
+
+	components.PlayerInput.Each(ecs.World, func(entry *donburi.Entry) {
+		input := components.PlayerInput.Get(entry)
+		updatePlayerInputData(input, gamepadIDs)
+	})
+}
+
+// updatePlayerInputData polls input for a single player based on their bound device.
+func updatePlayerInputData(input *components.PlayerInputData, gamepads []ebiten.GamepadID) {
+	input.PreviousInput = input.CurrentInput
+	input.CurrentInput = [cfg.ActionCount]bool{}
+
+	if input.BoundGamepadID != nil {
+		pollGamepadForPlayer(input, *input.BoundGamepadID)
+		return
+	}
+
+	if input.KeyboardZone >= 0 && input.KeyboardZone < len(cfg.KeyboardZoneBindings) {
+		pollKeyboardZoneForPlayer(input, input.KeyboardZone)
+	}
+}
+
+// pollGamepadForPlayer reads input from a specific gamepad into PlayerInputData.
+func pollGamepadForPlayer(input *components.PlayerInputData, gpID ebiten.GamepadID) {
+	if !ebiten.IsStandardGamepadLayoutAvailable(gpID) {
+		return
+	}
+
+	for actionID, binding := range cfg.Input.Bindings {
+		for _, btn := range binding.StandardGamepadButtons {
+			if ebiten.IsStandardGamepadButtonPressed(gpID, btn) {
+				input.CurrentInput[actionID] = true
+				input.InputMethod = getControllerType(gpID)
+			}
+		}
+	}
+
+	deadzone := cfg.Input.AnalogDeadzone
+	horizontal := ebiten.StandardGamepadAxisValue(gpID, ebiten.StandardGamepadAxisLeftStickHorizontal)
+	vertical := ebiten.StandardGamepadAxisValue(gpID, ebiten.StandardGamepadAxisLeftStickVertical)
+
+	if horizontal < -deadzone {
+		input.CurrentInput[cfg.ActionMoveLeft] = true
+		input.CurrentInput[cfg.ActionMenuLeft] = true
+		input.InputMethod = getControllerType(gpID)
+	}
+	if horizontal > deadzone {
+		input.CurrentInput[cfg.ActionMoveRight] = true
+		input.CurrentInput[cfg.ActionMenuRight] = true
+		input.InputMethod = getControllerType(gpID)
+	}
+	if vertical < -deadzone {
+		input.CurrentInput[cfg.ActionMoveUp] = true
+		input.CurrentInput[cfg.ActionMenuUp] = true
+		input.InputMethod = getControllerType(gpID)
+	}
+	if vertical > deadzone {
+		input.CurrentInput[cfg.ActionCrouch] = true
+		input.CurrentInput[cfg.ActionMenuDown] = true
+		input.InputMethod = getControllerType(gpID)
+	}
+}
+
+// pollKeyboardZoneForPlayer reads input from a keyboard zone into PlayerInputData.
+func pollKeyboardZoneForPlayer(input *components.PlayerInputData, zone int) {
+	zoneBindings := cfg.KeyboardZoneBindings[zone]
+	keyPressed := false
+
+	for actionID, keys := range zoneBindings {
+		for _, key := range keys {
+			if ebiten.IsKeyPressed(key) {
+				input.CurrentInput[actionID] = true
+				keyPressed = true
+			}
+		}
+	}
+
+	if keyPressed {
+		input.InputMethod = components.InputKeyboard
+	}
+}
+
+// GetPlayerAction returns the full ActionState for an action ID from PlayerInputData.
+func GetPlayerAction(input *components.PlayerInputData, id cfg.ActionID) components.ActionState {
+	curr := input.CurrentInput[id]
+	prev := input.PreviousInput[id]
 	return components.ActionState{
 		Pressed:      curr,
 		JustPressed:  curr && !prev,

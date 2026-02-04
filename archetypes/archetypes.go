@@ -21,6 +21,7 @@ var (
 	Player = newArchetype(
 		tags.Player,
 		components.Player,
+		components.PlayerInput,
 		components.Object,
 		components.Health,
 		components.Animation,

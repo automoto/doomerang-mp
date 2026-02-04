@@ -40,6 +40,46 @@ type InputConfig struct {
 // Input is the global input configuration
 var Input InputConfig
 
+// KeyboardZoneBindings maps ActionID to keys for each keyboard zone.
+// Zone 0 (WASD area) is for players using the left side of the keyboard.
+// Zone 1 (Arrows area) is for players using the right side of the keyboard.
+var KeyboardZoneBindings = [2]map[ActionID][]ebiten.Key{
+	// Zone 0: WASD area (Player 1 or Player 3)
+	{
+		ActionMoveLeft:   {ebiten.KeyA},
+		ActionMoveRight:  {ebiten.KeyD},
+		ActionMoveUp:     {ebiten.KeyW},
+		ActionJump:       {ebiten.KeyW},
+		ActionAttack:     {ebiten.KeyF},
+		ActionCrouch:     {ebiten.KeyS},
+		ActionBoomerang:  {ebiten.KeyG},
+		ActionPause:      {ebiten.KeyEscape},
+		ActionMenuUp:     {ebiten.KeyW},
+		ActionMenuDown:   {ebiten.KeyS},
+		ActionMenuLeft:   {ebiten.KeyA},
+		ActionMenuRight:  {ebiten.KeyD},
+		ActionMenuSelect: {ebiten.KeySpace},
+		ActionMenuBack:   {ebiten.KeyTab},
+	},
+	// Zone 1: Arrow area (Player 2 or Player 4)
+	{
+		ActionMoveLeft:   {ebiten.KeyLeft},
+		ActionMoveRight:  {ebiten.KeyRight},
+		ActionMoveUp:     {ebiten.KeyUp},
+		ActionJump:       {ebiten.KeyUp},
+		ActionAttack:     {ebiten.KeyNumpad1, ebiten.KeyPeriod},
+		ActionCrouch:     {ebiten.KeyDown},
+		ActionBoomerang:  {ebiten.KeyNumpad2, ebiten.KeySlash},
+		ActionPause:      {ebiten.KeyEscape},
+		ActionMenuUp:     {ebiten.KeyUp},
+		ActionMenuDown:   {ebiten.KeyDown},
+		ActionMenuLeft:   {ebiten.KeyLeft},
+		ActionMenuRight:  {ebiten.KeyRight},
+		ActionMenuSelect: {ebiten.KeyEnter},
+		ActionMenuBack:   {ebiten.KeyBackspace},
+	},
+}
+
 func init() {
 	Input = InputConfig{
 		AnalogDeadzone: 0.25,

@@ -29,13 +29,14 @@ The game supports both **local offline play** and **network multiplayer** with a
 - Milestone 1 - Foundation & Shared Code ✓
 - Milestone 2 - Basic Server ✓
 - Milestone 2b - Single-Player Cleanup ✓
+- Milestone 3 - Multi-Player Input System ✓
 
-**Next Step:** Milestone 3 - Multi-Player Input System (Local)
-- Per-player input components
-- Keyboard zone splitting (WASD vs Arrows)
-- Gamepad-to-player binding
+**Next Step:** Milestone 4 - Multi-Player Entities & Spawn
+- Add PlayerIndex to PlayerData
+- Support multiple spawn points
+- Spawn 1-4 players at match start
 
-**Then:** Milestone 4 - Multi-Player Entities & Spawn
+**Then:** Milestone 5 - Match System & Game Modes
 
 **Notes:**
 - Updated necs to v0.0.5 (commit 82c5928) which includes full srvsync, clisync, router, and transports
@@ -184,45 +185,44 @@ A headless game server that accepts WebSocket connections, manages the ECS world
 
 These milestones enable local play before network features.
 
-### Milestone 3: Multi-Player Input System
+### Milestone 3: Multi-Player Input System ✓
+
+**Status: COMPLETE**
 
 **Goal:** Extend input system to support 4 local players with independent input streams.
 
-#### Current Architecture
-- Single global `InputData` component (singleton)
-- All gamepads + keyboard merged into one input stream
-- Action-based abstraction via `GetAction(input, actionID)`
-
-#### Required Changes
+#### What Was Done
 
 **1. New `PlayerInputData` Component** (`components/input.go`):
-```go
-type PlayerInputData struct {
-    PlayerIndex     int                    // 0-3
-    CurrentInput    [cfg.ActionCount]bool
-    PreviousInput   [cfg.ActionCount]bool
-    BoundGamepadID  *ebiten.GamepadID      // nil = keyboard
-    KeyboardZone    int                    // 0=WASD, 1=Arrows, -1=none
-    InputMethod     InputMethod
-}
-```
+- Added `PlayerInputData` struct with PlayerIndex, CurrentInput, PreviousInput, BoundGamepadID, KeyboardZone, InputMethod
+- Added `PlayerInput` donburi component type
+- Added keyboard zone constants: `KeyboardZoneNone`, `KeyboardZoneWASD`, `KeyboardZoneArrows`
 
 **2. Keyboard Zone Configuration** (`config/input.go`):
-- Zone 0 (WASD area): A/D/W/S + Space + F/G (attack/boomerang)
-- Zone 1 (Arrow area): Arrows + Enter + Shift/Ctrl (attack/boomerang)
+- Added `KeyboardZoneBindings` array with two zones:
+  - Zone 0 (WASD area): A/D/W/S + Space + F/G (attack/boomerang) + Tab
+  - Zone 1 (Arrow area): Arrows + Enter + Period/Slash or Numpad 1/2
 
 **3. Per-Player Input Polling** (`systems/input.go`):
-- `UpdateMultiPlayerInput()` - polls each player's bound device
-- Gamepad binding: first connected → P1, second → P2, etc.
-- Keyboard zones: independent polling per zone
+- Added `UpdateMultiPlayerInput()` function - polls all player entities
+- Added `updatePlayerInputData()` - polls single player's device
+- Added `pollGamepadForPlayer()` - reads specific gamepad
+- Added `pollKeyboardZoneForPlayer()` - reads specific keyboard zone
+- Added `GetPlayerAction()` helper for per-player input
 
-**Files to modify:**
-- `components/input.go` - Add PlayerInputData
-- `config/input.go` - Add keyboard zone bindings
-- `systems/input.go` - Per-player polling
-- `systems/player.go` - Use player-specific input
-- `systems/factory/player.go` - Attach PlayerInputData
-- `archetypes/archetypes.go` - Add PlayerInputData to Player archetype
+**4. Updated Files:**
+- [x] `components/input.go` - Added PlayerInputData
+- [x] `config/input.go` - Added keyboard zone bindings
+- [x] `systems/input.go` - Per-player polling functions
+- [x] `systems/player.go` - Uses `PlayerInputData` instead of global `InputData`
+- [x] `systems/factory/player.go` - Creates PlayerInputData with PlayerInputConfig
+- [x] `archetypes/archetypes.go` - Added PlayerInput to Player archetype
+- [x] `scenes/world.go` - Registers UpdateMultiPlayerInput, creates player with input config
+
+**Current State:**
+- Player 1 uses WASD keyboard zone by default
+- Global InputData still exists for menus/pause
+- System ready for multiple players once spawn logic is added
 
 ---
 

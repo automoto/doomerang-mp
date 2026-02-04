@@ -71,6 +71,7 @@ func (ps *PlatformerScene) configure() {
 
 	// Systems that always run
 	ecs.AddSystem(systems.UpdateInput)
+	ecs.AddSystem(systems.UpdateMultiPlayerInput)
 	ecs.AddSystem(systems.UpdatePause)
 
 	// Game systems wrapped with pause and level complete checks
@@ -156,8 +157,13 @@ func (ps *PlatformerScene) configure() {
 	playerSpawnX := spawn.X
 	playerSpawnY := spawn.Y
 
-	// Create the player at the determined position
-	player := factory2.CreatePlayer(ps.ecs, playerSpawnX, playerSpawnY)
+	// Create the player at the determined position with keyboard zone 0 (WASD)
+	inputCfg := factory2.PlayerInputConfig{
+		PlayerIndex:  0,
+		GamepadID:    nil,
+		KeyboardZone: components.KeyboardZoneWASD,
+	}
+	player := factory2.CreatePlayer(ps.ecs, playerSpawnX, playerSpawnY, inputCfg)
 	playerObj := components.Object.Get(player)
 	space.Add(playerObj.Object)
 
