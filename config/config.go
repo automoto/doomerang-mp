@@ -460,6 +460,41 @@ const (
 	DirectionRight = 1.0
 )
 
+// PlayerColorData contains color info for a player slot in multiple formats
+type PlayerColorData struct {
+	RGBA       color.RGBA  // For HUD, UI elements
+	ShaderRGB  [3]float32  // Normalized 0-1 RGB for shader uniforms
+}
+
+// PlayerColorsConfig holds all player slot colors and shader settings
+type PlayerColorsConfig struct {
+	Colors       [4]PlayerColorData // One per player slot
+	TintStrength float32            // Shader tint strength (0 = original, 1 = full tint)
+}
+
+// PlayerColors contains the color configuration for all player slots
+var PlayerColors = PlayerColorsConfig{
+	Colors: [4]PlayerColorData{
+		{ // P1: Yellow
+			RGBA:      color.RGBA{255, 220, 0, 255},
+			ShaderRGB: [3]float32{1.0, 0.86, 0.0},
+		},
+		{ // P2: Orange
+			RGBA:      color.RGBA{255, 140, 0, 255},
+			ShaderRGB: [3]float32{1.0, 0.55, 0.0},
+		},
+		{ // P3: Bright Purple
+			RGBA:      color.RGBA{200, 80, 255, 255},
+			ShaderRGB: [3]float32{0.78, 0.31, 1.0},
+		},
+		{ // P4: Bright Blue
+			RGBA:      color.RGBA{80, 180, 255, 255},
+			ShaderRGB: [3]float32{0.31, 0.71, 1.0},
+		},
+	},
+	TintStrength: 0.65,
+}
+
 func init() {
 	C = &Config{
 		Width:  640,
@@ -727,8 +762,8 @@ func init() {
 		HealthBarDuration: 180,
 
 		// Flash effects
-		HitFlashFrames:    3,
-		DamageFlashFrames: 5,
+		HitFlashFrames:    5,
+		DamageFlashFrames: 8,
 	}
 
 	// Pause Config

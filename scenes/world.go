@@ -79,6 +79,11 @@ func (ps *PlatformerScene) configure() {
 	systems.PreloadAllSFX()
 	assets.PreloadAllAnimations()
 
+	// Load shaders for player tinting
+	if err := assets.LoadShaders(); err != nil {
+		panic("failed to load shaders: " + err.Error())
+	}
+
 	ecs := ecs.NewECS(donburi.NewWorld())
 
 	// Audio system (runs first, even when paused for menu sounds)

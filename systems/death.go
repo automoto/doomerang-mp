@@ -178,6 +178,15 @@ func resetPlayerAtPosition(e *donburi.Entry, spawnX, spawnY float64) {
 
 	health := components.Health.Get(e)
 	health.Current = health.Max
+
+	// Re-add Flash component if it was removed during death sequence
+	if !e.HasComponent(components.Flash) {
+		e.AddComponent(components.Flash)
+		components.Flash.SetValue(e, components.FlashData{
+			Duration: 0,
+			R:        1, G: 1, B: 1,
+		})
+	}
 }
 
 func isPositionSafe(space *resolv.Space, x, y, w, h float64) bool {

@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 
+	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -14,7 +15,8 @@ import (
 )
 
 var (
-	drawOp = &ebiten.DrawImageOptions{}
+	drawOp       = &ebiten.DrawImageOptions{}
+	shaderDrawOp = &ebiten.DrawRectShaderOptions{}
 )
 
 // Viewport culling significantly improves performance by skipping the expensive matrix
@@ -166,38 +168,47 @@ func DrawAnimated(ecs *ecs.ECS, screen *ebiten.Image) {
 				drawOp.GeoM.Scale(zoom, zoom)
 				drawOp.GeoM.Translate(float64(width)/2, float64(height)/2)
 
-				// Flicker effect if invulnerable
-				if isEnemy {
-					enemy := components.Enemy.Get(e)
-					if enemy.InvulnFrames > 0 && enemy.InvulnFrames%4 < 2 {
-						drawOp.ColorScale.Scale(1, 0.5, 0.5, 0.8) // Red tint and semi-transparent
-					}
-				}
-				if isPlayer {
-					player := components.Player.Get(e)
-					if player.InvulnFrames > 0 && player.InvulnFrames%4 < 2 {
-						drawOp.ColorScale.Scale(1, 0.5, 0.5, 0.8) // Red tint and semi-transparent
-					}
-				}
-
-				// Apply enemy type color tinting
-				if isEnemy {
-					enemy := components.Enemy.Get(e)
-					drawOp.ColorScale.ScaleWithColorScale(enemy.TintColor)
-				}
-
-				// Apply flash effect (overrides other color effects)
-				// Skip flash for dying entities to prevent visual artifacts
+				// Check for active flash first (it overrides other color effects)
+				hasActiveFlash := false
 				if e.HasComponent(components.Flash) && !e.HasComponent(components.Death) {
 					flash := components.Flash.Get(e)
 					if flash.Duration > 0 {
-						drawOp.ColorScale.Reset()
+						hasActiveFlash = true
 						drawOp.ColorScale.Scale(flash.R, flash.G, flash.B, 1)
 					}
 				}
 
-				// Draw the current frame.
-				screen.DrawImage(img, drawOp)
+				// Apply other color effects only if no flash is active
+				if !hasActiveFlash {
+					// Flicker effect if invulnerable
+					if isEnemy {
+						enemy := components.Enemy.Get(e)
+						if enemy.InvulnFrames > 0 && enemy.InvulnFrames%4 < 2 {
+							drawOp.ColorScale.Scale(1, 0.5, 0.5, 0.8) // Red tint and semi-transparent
+						}
+					}
+					if isPlayer {
+						player := components.Player.Get(e)
+						if player.InvulnFrames > 0 && player.InvulnFrames%4 < 2 {
+							drawOp.ColorScale.Scale(1, 0.5, 0.5, 0.8) // Red tint and semi-transparent
+						}
+					}
+
+					// Apply enemy type color tinting
+					if isEnemy {
+						enemy := components.Enemy.Get(e)
+						drawOp.ColorScale.ScaleWithColorScale(enemy.TintColor)
+					}
+				}
+
+				// Draw the current frame
+				// Use shader for player tinting (flash ColorScale is passed through)
+				if isPlayer && assets.TintShader != nil {
+					player := components.Player.Get(e)
+					drawPlayerWithShader(screen, img, drawOp, player.PlayerIndex)
+				} else {
+					screen.DrawImage(img, drawOp)
+				}
 			}
 		} else {
 			// Fallback to rectangle if no animation is available
@@ -347,6 +358,30 @@ func DrawSprites(ecs *ecs.ECS, screen *ebiten.Image) {
 	})
 }
 
+// drawPlayerWithShader renders a player sprite with their unique tint color
+func drawPlayerWithShader(screen, img *ebiten.Image, op *ebiten.DrawImageOptions, playerIndex int) {
+	// Get player color from config (wrap around if more than 4 players)
+	colorIdx := playerIndex % len(cfg.PlayerColors.Colors)
+	tintColor := cfg.PlayerColors.Colors[colorIdx].ShaderRGB
+
+	// Get image dimensions
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+
+	// Set up shader options
+	shaderDrawOp.GeoM = op.GeoM
+	shaderDrawOp.ColorScale = op.ColorScale
+	shaderDrawOp.Images[0] = img
+	shaderDrawOp.Uniforms = map[string]any{
+		"TintR":        tintColor[0],
+		"TintG":        tintColor[1],
+		"TintB":        tintColor[2],
+		"TintStrength": cfg.PlayerColors.TintStrength,
+	}
+
+	screen.DrawRectShader(w, h, assets.TintShader, shaderDrawOp)
+}
+
 // TriggerHitFlash starts a white flash effect on the entity (for hits dealt)
 func TriggerHitFlash(entry *donburi.Entry) {
 	// Don't flash dying entities
@@ -357,11 +392,11 @@ func TriggerHitFlash(entry *donburi.Entry) {
 	if entry.HasComponent(components.Flash) {
 		flash := components.Flash.Get(entry)
 		flash.Duration = cfg.Combat.HitFlashFrames
-		flash.R, flash.G, flash.B = 3, 3, 3 // Bright white (multiplier)
+		flash.R, flash.G, flash.B = 2.5, 2.5, 2.5 // Noticeable brightening
 	}
 }
 
-// TriggerDamageFlash starts a red flash effect on the entity (for damage taken)
+// TriggerDamageFlash starts a flash effect on the entity (for damage taken)
 func TriggerDamageFlash(entry *donburi.Entry) {
 	// Don't flash dying entities
 	if entry.HasComponent(components.Death) {
@@ -371,6 +406,6 @@ func TriggerDamageFlash(entry *donburi.Entry) {
 	if entry.HasComponent(components.Flash) {
 		flash := components.Flash.Get(entry)
 		flash.Duration = cfg.Combat.DamageFlashFrames
-		flash.R, flash.G, flash.B = 3, 1, 1 // Red tint (multiplier)
+		flash.R, flash.G, flash.B = 2.5, 2.5, 2.5 // Noticeable brightening
 	}
 }

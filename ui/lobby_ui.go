@@ -44,13 +44,6 @@ type LobbyUI struct {
 	initialized bool
 }
 
-// Player colors for visual identification
-var playerColors = []color.Color{
-	color.RGBA{0, 200, 0, 255},   // P1: Green
-	color.RGBA{0, 150, 255, 255}, // P2: Blue
-	color.RGBA{255, 200, 0, 255}, // P3: Yellow
-	color.RGBA{255, 100, 0, 255}, // P4: Orange
-}
 
 // NewLobbyUI creates a new lobby UI with ebitenui
 func NewLobbyUI(lobby *components.LobbyData, onStartMatch, onGoBack func()) *LobbyUI {
@@ -180,7 +173,7 @@ func (lui *LobbyUI) buildSlotRow(slotIndex int) *widget.Container {
 	// Player label (P1, P2, etc.)
 	playerLabel := widget.NewLabel(
 		widget.LabelOpts.Text(fmt.Sprintf("P%d:", slotIndex+1), &lui.normalFace, &widget.LabelColor{
-			Idle: playerColors[slotIndex],
+			Idle: cfg.PlayerColors.Colors[slotIndex].RGBA,
 		}),
 	)
 	row.AddChild(playerLabel)

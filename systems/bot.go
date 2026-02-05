@@ -341,10 +341,10 @@ func generateChaseInputs(bot *components.BotData, input *components.PlayerInputD
 		bot.JumpCooldown = 45
 	}
 
-	// Wall jump
+	// Wall jump - longer cooldown to prevent rapid bouncing in corridors
 	if physics.WallSliding != nil && bot.JumpCooldown <= 0 {
 		input.CurrentInput[cfg.ActionJump] = true
-		bot.JumpCooldown = 30
+		bot.JumpCooldown = 45
 	}
 }
 
@@ -544,10 +544,10 @@ func generateRetreatInputs(bot *components.BotData, input *components.PlayerInpu
 		bot.JumpCooldown = 50
 	}
 
-	// Wall jump to escape
+	// Wall jump to escape - longer cooldown to prevent rapid bouncing
 	if physics.WallSliding != nil && bot.JumpCooldown <= 0 {
 		input.CurrentInput[cfg.ActionJump] = true
-		bot.JumpCooldown = 30
+		bot.JumpCooldown = 45
 	}
 
 	// Aggressive counter-attacks

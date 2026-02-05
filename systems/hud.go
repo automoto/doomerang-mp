@@ -19,13 +19,6 @@ const (
 	livesMargin  = 3
 )
 
-// Player colors for HUD differentiation
-var playerColors = []color.RGBA{
-	{40, 220, 40, 255},  // P1: Green
-	{40, 120, 220, 255}, // P2: Blue
-	{220, 180, 40, 255}, // P3: Yellow
-	{220, 80, 40, 255},  // P4: Orange
-}
 
 var heartIcon *ebiten.Image
 var hudDrawOp = &ebiten.DrawImageOptions{}
@@ -57,8 +50,8 @@ func DrawHUD(ecs *ecs.ECS, screen *ebiten.Image) {
 			return
 		}
 
-		// Get player color
-		playerColor := playerColors[playerIndex%len(playerColors)]
+		// Get player color from config
+		playerColor := cfg.PlayerColors.Colors[playerIndex%len(cfg.PlayerColors.Colors)].RGBA
 
 		// Background (dark gray)
 		vector.DrawFilledRect(screen, x, y,

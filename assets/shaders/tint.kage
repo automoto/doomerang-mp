@@ -1,0 +1,38 @@
+//kage:unit pixels
+
+package main
+
+// Tint color (RGB, 0-1 range)
+var TintR float
+var TintG float
+var TintB float
+
+// Tint strength (0 = original, 1 = full tint)
+var TintStrength float
+
+func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+	// Sample the source texture
+	src := imageSrc0At(srcPos)
+
+	// If pixel is transparent, return as-is
+	if src.a == 0 {
+		return src
+	}
+
+	// Calculate luminance (grayscale value) - preserves shading details
+	luminance := 0.299*src.r + 0.587*src.g + 0.114*src.b
+
+	// Create tinted color by applying tint to the luminance
+	tinted := vec4(
+		luminance * TintR,
+		luminance * TintG,
+		luminance * TintB,
+		src.a,
+	)
+
+	// Blend between original and tinted based on strength
+	result := mix(src, tinted, TintStrength)
+
+	// Apply ColorScale (includes flash effects, invuln flicker, etc.)
+	return result * color
+}

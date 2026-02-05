@@ -13,13 +13,6 @@ import (
 	"github.com/yohamta/donburi/ecs"
 )
 
-// Player colors matching HUD
-var matchPlayerColors = []color.RGBA{
-	{40, 220, 40, 255},  // P1: Green
-	{40, 120, 220, 255}, // P2: Blue
-	{220, 180, 40, 255}, // P3: Yellow
-	{220, 80, 40, 255},  // P4: Orange
-}
 
 // DrawMatchHUD renders match-specific UI elements (timer, scores, countdown, results)
 func DrawMatchHUD(ecs *ecs.ECS, screen *ebiten.Image) {
@@ -76,7 +69,7 @@ func drawMatchScores(screen *ebiten.Image, match *components.MatchData) {
 	spacing := 12
 
 	for i, score := range match.Scores {
-		playerColor := matchPlayerColors[i%len(matchPlayerColors)]
+		playerColor := cfg.PlayerColors.Colors[i%len(cfg.PlayerColors.Colors)].RGBA
 		scoreStr := fmt.Sprintf("P%d: %d", i+1, score.KOs)
 
 		// Position scores in a row centered under timer
@@ -146,7 +139,7 @@ func drawMatchResults(screen *ebiten.Image, match *components.MatchData) {
 		winnerColor = cfg.BrightGreen
 	case match.WinnerIndex >= 0:
 		winnerStr = fmt.Sprintf("Player %d Wins!", match.WinnerIndex+1)
-		winnerColor = matchPlayerColors[match.WinnerIndex%len(matchPlayerColors)]
+		winnerColor = cfg.PlayerColors.Colors[match.WinnerIndex%len(cfg.PlayerColors.Colors)].RGBA
 	case match.WinnerIndex == -1:
 		winnerStr = "It's a Tie!"
 		winnerColor = cfg.Yellow
@@ -162,7 +155,7 @@ func drawMatchResults(screen *ebiten.Image, match *components.MatchData) {
 	// Score table
 	y := 140
 	for i, score := range match.Scores {
-		playerColor := matchPlayerColors[i%len(matchPlayerColors)]
+		playerColor := cfg.PlayerColors.Colors[i%len(cfg.PlayerColors.Colors)].RGBA
 		scoreStr := fmt.Sprintf("P%d: %d KOs / %d Deaths", i+1, score.KOs, score.Deaths)
 		scoreWidth := len(scoreStr) * 8
 		x := int(width/2) - scoreWidth/2
