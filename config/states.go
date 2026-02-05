@@ -103,19 +103,19 @@ var StateToFileName = map[StateID]string{
 	StateSliding: "slide", // Custom slide animation
 
 	// Enemy AI states map to movement animations
-	StatePatrol:      "walk",
-	StateChase:       "running",
+	StatePatrol:       "walk",
+	StateChase:        "running",
 	StateApproachEdge: "walk",
 
 	// VFX states map to effect sprite files
 	StateJumpDust:       "jumpdust",
 	StateLandDust:       "landingdust",
 	StateSlideDust:      "slidedust",
-	StateExplosionShort:  "explosion_short",
-	StatePlasma:          "plasma",
-	StateGunshot:         "gunshot_rifle",
-	HitExplosion:         "explosion",
-	ChargeUp:             "level_up",
+	StateExplosionShort: "explosion_short",
+	StatePlasma:         "plasma",
+	StateGunshot:        "gunshot_rifle",
+	HitExplosion:        "explosion",
+	ChargeUp:            "level_up",
 
 	// Fire obstacle sprites
 	FirePulsing:    "flames_pulse",

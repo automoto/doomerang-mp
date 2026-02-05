@@ -338,6 +338,29 @@ type SquashStretchConfig struct {
 	LerpSpeed  float64 // how fast to return to normal scale
 }
 
+// PathfindingConfig contains bot AI pathfinding configuration
+type PathfindingConfig struct {
+	CellSize        float64 // Navigation grid cell size in pixels
+	MaxJumpHeight   float64 // Maximum jump height in pixels (derived from physics)
+	MaxJumpDistance float64 // Maximum jump distance in pixels with running start
+	AirTime         int     // Total air time in frames
+	SafetyMargin    float64 // Safety margin for jump calculations (0.0-1.0)
+	GapCheckDist    float64 // How far ahead to check for gaps (pixels)
+	GapCheckDepth   float64 // How far down to check for ground (pixels)
+	LOSStepSize     float64 // Step size for line-of-sight raycasts (pixels)
+	LOSCheckSize    float64 // Size of LOS check points (pixels)
+}
+
+// BotCombatConfig contains bot attack decision thresholds
+type BotCombatConfig struct {
+	PunchRange       float64 // Max distance for punch attacks
+	JumpKickMinRange float64 // Min distance for jump kick
+	JumpKickMaxRange float64 // Max distance for jump kick
+	BoomerangMinRange float64 // Min distance for boomerang throw
+	BoomerangMaxRange float64 // Max distance for boomerang throw
+	ApproachMinRange float64 // Min distance before approaching
+}
+
 // LevelCompleteConfig contains level complete overlay configuration
 type LevelCompleteConfig struct {
 	OverlayColor color.RGBA
@@ -380,6 +403,8 @@ var Message MessageConfig
 var LevelComplete LevelCompleteConfig
 var Camera CameraConfig
 var Match MatchConfig
+var Pathfinding PathfindingConfig
+var BotCombat BotCombatConfig
 
 // DebugConfig contains debug/testing command-line options
 type DebugConfig struct {
@@ -821,13 +846,13 @@ func init() {
 		LookAheadDistanceX:      60.0, // ~10% of 640px screen width
 		LookAheadSmoothing:      0.05, // Slower than follow for smooth feel
 		LookAheadMovingScale:    1.0,
-		LookAheadSpeedThreshold: 0.1,  // Minimum speed to update look-ahead
-		DeadZoneX:               0.3,  // Push zone is outer 30% on each side
-		DeadZoneY:               0.3,  // Push zone is outer 30% on top/bottom
-		MinZoom:                 0.5,  // Can see 2x the normal area at max zoom out
-		MaxZoom:                 1.0,  // Normal zoom (no zoom in beyond this)
+		LookAheadSpeedThreshold: 0.1,   // Minimum speed to update look-ahead
+		DeadZoneX:               0.3,   // Push zone is outer 30% on each side
+		DeadZoneY:               0.3,   // Push zone is outer 30% on top/bottom
+		MinZoom:                 0.5,   // Can see 2x the normal area at max zoom out
+		MaxZoom:                 1.0,   // Normal zoom (no zoom in beyond this)
 		ZoomMargin:              100.0, // 100px padding around player group
-		ZoomSmoothing:           0.05, // Smooth zoom transitions
+		ZoomSmoothing:           0.05,  // Smooth zoom transitions
 	}
 
 	// Match Config
@@ -839,5 +864,30 @@ func init() {
 		MaxPlayers:         4,
 		MinPlayersToStart:  1,
 		ResultsDisplayTime: 60 * 5, // 5 seconds to show results
+	}
+
+	// Pathfinding Config (derived from Player physics)
+	// MaxJumpHeight = v²/(2g) = 15²/(2*0.75) = 150px
+	// MaxJumpDistance = horizontal_speed * air_time = 6.0 * 40 = 240px
+	Pathfinding = PathfindingConfig{
+		CellSize:        32.0,  // Navigation grid cell size (character width)
+		MaxJumpHeight:   150.0, // Calculated from JumpSpeed²/(2*Gravity)
+		MaxJumpDistance: 240.0, // MaxSpeed * AirTime with running start
+		AirTime:         40,    // ~0.67 seconds at 60fps
+		SafetyMargin:    0.8,   // Use 80% of theoretical max for bot jumps
+		GapCheckDist:    24.0,  // Check 1.5 tiles ahead for gaps
+		GapCheckDepth:   48.0,  // Check 3 tiles down for ground
+		LOSStepSize:     16.0,  // Step size for line-of-sight checks (1 tile)
+		LOSCheckSize:    4.0,   // Size of LOS check points
+	}
+
+	// Bot Combat Config (attack decision thresholds)
+	BotCombat = BotCombatConfig{
+		PunchRange:        60.0,  // Max distance for punch attacks
+		JumpKickMinRange:  50.0,  // Min distance for jump kick
+		JumpKickMaxRange:  100.0, // Max distance for jump kick
+		BoomerangMinRange: 80.0,  // Min distance for boomerang throw
+		BoomerangMaxRange: 300.0, // Max distance for boomerang throw
+		ApproachMinRange:  50.0,  // Min distance before approaching
 	}
 }

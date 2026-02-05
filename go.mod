@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.24.5
 
 require (
+	github.com/beefsack/go-astar v0.0.0-20200827232313-4ecf9e304482
 	github.com/ebitenui/ebitenui v0.7.2
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/hajimehoshi/ebiten/v2 v2.9.7

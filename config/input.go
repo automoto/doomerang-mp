@@ -62,8 +62,8 @@ var ControlSchemeBindings = [ControlSchemeCount]map[ActionID][]ebiten.Key{
 	{
 		ActionMoveLeft:   {ebiten.KeyLeft},
 		ActionMoveRight:  {ebiten.KeyRight},
-		ActionMoveUp:     {ebiten.KeyUp},      // For aiming up
-		ActionJump:       {ebiten.KeyDigit0},  // Dedicated jump button
+		ActionMoveUp:     {ebiten.KeyUp},     // For aiming up
+		ActionJump:       {ebiten.KeyDigit0}, // Dedicated jump button
 		ActionAttack:     {ebiten.KeyDigit8},
 		ActionCrouch:     {ebiten.KeyDown},
 		ActionBoomerang:  {ebiten.KeyDigit9},
@@ -79,8 +79,8 @@ var ControlSchemeBindings = [ControlSchemeCount]map[ActionID][]ebiten.Key{
 	{
 		ActionMoveLeft:   {ebiten.KeyA},
 		ActionMoveRight:  {ebiten.KeyD},
-		ActionMoveUp:     {ebiten.KeyW},      // For aiming up
-		ActionJump:       {ebiten.KeySpace},  // Dedicated jump button
+		ActionMoveUp:     {ebiten.KeyW},     // For aiming up
+		ActionJump:       {ebiten.KeySpace}, // Dedicated jump button
 		ActionAttack:     {ebiten.KeyF},
 		ActionCrouch:     {ebiten.KeyS},
 		ActionBoomerang:  {ebiten.KeyG},

@@ -10,11 +10,9 @@ type BotStateID int
 
 const (
 	BotStateIdle BotStateID = iota
-	BotStatePatrol
 	BotStateChase
 	BotStateAttack
 	BotStateRetreat
-	BotStateJump
 )
 
 // BotData stores AI state for bot-controlled players.
@@ -33,12 +31,10 @@ type BotData struct {
 	DecisionTimer  int // Frames until next AI decision (adds reaction delay)
 	AttackCooldown int // Frames until can attack again
 	JumpCooldown   int // Frames until can jump again
-	DirectionTimer int // Frames until can change direction
 
 	// Behavior tuning (set from config based on difficulty)
 	ReactionDelay    int     // Frames to delay reactions
 	AttackRange      float64 // Distance to start attacking
-	ChaseRange       float64 // Distance to start chasing
 	RetreatThreshold float64 // Health % to start retreating
 }
 

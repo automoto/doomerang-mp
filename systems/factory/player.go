@@ -13,10 +13,10 @@ import (
 
 // PlayerInputConfig defines how a player receives input.
 type PlayerInputConfig struct {
-	PlayerIndex   int                   // 0-3 player index
-	GamepadID     *ebiten.GamepadID     // Bound gamepad (nil = keyboard)
-	KeyboardZone  int                   // DEPRECATED: use ControlScheme instead
-	ControlScheme cfg.ControlSchemeID   // Active control scheme (A=Arrows+Numpad, B=WASD+Space)
+	PlayerIndex   int                 // 0-3 player index
+	GamepadID     *ebiten.GamepadID   // Bound gamepad (nil = keyboard)
+	KeyboardZone  int                 // DEPRECATED: use ControlScheme instead
+	ControlScheme cfg.ControlSchemeID // Active control scheme (A=Arrows+Numpad, B=WASD+Space)
 }
 
 // CreatePlayer creates a player entity with the given input configuration.
@@ -70,7 +70,7 @@ func CreatePlayer(ecs *ecs.ECS, x, y float64, inputCfg PlayerInputConfig) *donbu
 	// Initialize Flash component (permanently attached to avoid archetype thrashing)
 	components.Flash.SetValue(player, components.FlashData{
 		Duration: 0,
-		R: 1, G: 1, B: 1,
+		R:        1, G: 1, B: 1,
 	})
 
 	return player
@@ -99,11 +99,10 @@ func CreateBotPlayer(ecs *ecs.ECS, x, y float64, playerIndex int, difficulty cfg
 	diffConfig := cfg.Bot.Difficulties[difficulty]
 	components.Bot.SetValue(player, components.BotData{
 		Difficulty:        difficulty,
-		AIState:           components.BotStatePatrol,
+		AIState:           components.BotStateChase, // Start chasing immediately
 		TargetPlayerIndex: -1,
 		ReactionDelay:     diffConfig.ReactionDelay,
 		AttackRange:       diffConfig.AttackRange,
-		ChaseRange:        diffConfig.ChaseRange,
 		RetreatThreshold:  diffConfig.RetreatThreshold,
 	})
 
