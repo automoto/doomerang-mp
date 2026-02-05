@@ -12,39 +12,42 @@ import (
 	"github.com/yohamta/donburi/ecs"
 )
 
-// Random number generator for bot decision making.
-// Uses fixed seed for deterministic replay support.
-var rng = rand.New(rand.NewSource(42))
+var rng = rand.New(rand.NewSource(42)) // Fixed seed for deterministic replay
 
-// Package-level nav grid cache (created once per level).
-// Note: This is safe in single-threaded game loop. The cache is
-// invalidated when level changes (checked via navGridLevelID).
+// Nav grid cache (created once per level)
 var cachedNavGrid *NavGrid
 var navGridLevelID string
 
-// UpdateBots generates input for bot-controlled players based on AI decisions.
-// Must run BEFORE UpdateMultiPlayerInput to override bot inputs.
+// UpdateBots generates input for bot-controlled players.
+// Must run BEFORE UpdateMultiPlayerInput.
 func UpdateBots(e *ecs.ECS) {
-	// Only run bot AI when match is actively playing
 	if !IsMatchPlaying(e) {
 		return
 	}
 
-	// Get space for line-of-sight checks and gap detection
 	var space *resolv.Space
 	if spaceEntry, ok := components.Space.First(e.World); ok {
 		space = components.Space.Get(spaceEntry)
 	}
 
-	// Get nav grid (create once and cache per level)
 	navGrid := getOrCreateNavGrid(e, space)
 
-	// Collect all player positions for target selection
+	var match *components.MatchData
+	if matchEntry, ok := components.Match.First(e.World); ok {
+		match = components.Match.Get(matchEntry)
+	}
+
 	var playerPositions []playerInfo
 	tags.Player.Each(e.World, func(entry *donburi.Entry) {
 		obj := components.Object.Get(entry)
 		player := components.Player.Get(entry)
 		health := components.Health.Get(entry)
+
+		team := -1
+		if match != nil {
+			team = match.GetPlayerScore(player.PlayerIndex).Team
+		}
+
 		playerPositions = append(playerPositions, playerInfo{
 			entry:       entry,
 			playerIndex: player.PlayerIndex,
@@ -53,10 +56,10 @@ func UpdateBots(e *ecs.ECS) {
 			health:      health.Current,
 			maxHealth:   health.Max,
 			isBot:       entry.HasComponent(components.Bot),
+			team:        team,
 		})
 	})
 
-	// Update each bot
 	components.Bot.Each(e.World, func(entry *donburi.Entry) {
 		updateBotAI(e, entry, playerPositions, space, navGrid)
 	})
@@ -69,6 +72,7 @@ type playerInfo struct {
 	health      int
 	maxHealth   int
 	isBot       bool
+	team        int
 }
 
 func updateBotAI(e *ecs.ECS, botEntry *donburi.Entry, players []playerInfo, space *resolv.Space, navGrid *NavGrid) {
@@ -79,7 +83,6 @@ func updateBotAI(e *ecs.ECS, botEntry *donburi.Entry, players []playerInfo, spac
 	health := components.Health.Get(botEntry)
 	physics := components.Physics.Get(botEntry)
 
-	// Decrement cooldowns
 	if bot.DecisionTimer > 0 {
 		bot.DecisionTimer--
 	}
@@ -90,17 +93,23 @@ func updateBotAI(e *ecs.ECS, botEntry *donburi.Entry, players []playerInfo, spac
 		bot.JumpCooldown--
 	}
 
-	// Clear previous inputs
 	input.PreviousInput = input.CurrentInput
 	input.CurrentInput = [cfg.ActionCount]bool{}
 
 	botX := obj.X + obj.W/2
 	botY := obj.Y + obj.H/2
 
-	// Find nearest enemy player (not self, not on same team in team modes)
-	target := findNearestTarget(bot, player.PlayerIndex, botX, botY, players)
+	botTeam := -1
+	for i := range players {
+		if players[i].playerIndex == player.PlayerIndex {
+			botTeam = players[i].team
+			break
+		}
+	}
 
-	// Update target tracking
+	target := findNearestTarget(bot, player.PlayerIndex, botTeam, botX, botY, players)
+	teammates := findNearbyTeammates(player.PlayerIndex, botTeam, botX, botY, players)
+
 	if target != nil {
 		bot.TargetPlayerIndex = target.playerIndex
 		bot.TargetX = target.x
@@ -111,40 +120,37 @@ func updateBotAI(e *ecs.ECS, botEntry *donburi.Entry, players []playerInfo, spac
 		bot.DistanceToTarget = 9999
 	}
 
-	// PRIORITY 1: Check for incoming threats and react defensively
-	threat := detectIncomingThreats(e, botX, botY, player.PlayerIndex)
+	// Threat detection takes priority
+	threat := detectIncomingThreats(e, botX, botY, player.PlayerIndex, botTeam, players)
 	if generateDefensiveInputs(bot, input, player, threat, botX, botY, physics) {
-		return // Defensive action takes priority
+		return
 	}
 
-	// Check health for retreat
 	healthPercent := float64(health.Current) / float64(health.Max)
 
-	// State machine with reaction delay
 	if bot.DecisionTimer <= 0 {
 		updateBotState(bot, target, healthPercent, physics)
-		bot.DecisionTimer = bot.ReactionDelay / 3 // Periodic re-evaluation
+		bot.DecisionTimer = bot.ReactionDelay / 3
 	}
 
-	// Generate inputs based on state
-	generateBotInputs(bot, input, player, obj, physics, target, botX, botY, space, navGrid)
+	generateBotInputs(bot, input, player, obj, physics, target, teammates, botX, botY, space, navGrid)
 }
 
-func findNearestTarget(bot *components.BotData, myIndex int, myX, myY float64, players []playerInfo) *playerInfo {
+func findNearestTarget(bot *components.BotData, myIndex int, myTeam int, myX, myY float64, players []playerInfo) *playerInfo {
 	var nearest *playerInfo
 	nearestDist := math.MaxFloat64
 
 	for i := range players {
 		p := &players[i]
-		// Skip self
 		if p.playerIndex == myIndex {
 			continue
 		}
-		// Skip dead players
 		if p.health <= 0 {
 			continue
 		}
-		// In a real implementation, would also skip teammates
+		if myTeam != -1 && p.team == myTeam {
+			continue
+		}
 
 		dist := distance(myX, myY, p.x, p.y)
 		if dist < nearestDist {
@@ -156,93 +162,226 @@ func findNearestTarget(bot *components.BotData, myIndex int, myX, myY float64, p
 	return nearest
 }
 
+// Pre-allocated slice for teammate detection (avoids allocation per frame)
+var cachedTeammates = make([]*playerInfo, 0, 4)
+
+// findNearbyTeammates returns teammates within detection range (for collision avoidance).
+// Returns pointers into the players slice - valid only for current frame.
+func findNearbyTeammates(myIndex int, myTeam int, myX, myY float64, players []playerInfo) []*playerInfo {
+	cachedTeammates = cachedTeammates[:0]
+
+	if myTeam == -1 {
+		return cachedTeammates
+	}
+
+	for i := range players {
+		p := &players[i]
+		if p.playerIndex == myIndex || p.health <= 0 || p.team != myTeam {
+			continue
+		}
+		if distance(myX, myY, p.x, p.y) < cfg.Pathfinding.TeammateDetectRange {
+			cachedTeammates = append(cachedTeammates, p)
+		}
+	}
+
+	return cachedTeammates
+}
+
+// isTeammateBlocking checks if a teammate is blocking movement in a direction
+func isTeammateBlocking(botX, botY float64, movingRight bool, teammates []*playerInfo) *playerInfo {
+	for _, t := range teammates {
+		dx := t.x - botX
+		dy := t.y - botY
+
+		if math.Abs(dy) > cfg.Pathfinding.TeammateVerticalTolerance {
+			continue
+		}
+
+		blockDist := cfg.Pathfinding.TeammateBlockingDist
+		if movingRight && dx > 0 && dx < blockDist {
+			return t
+		}
+		if !movingRight && dx < 0 && dx > -blockDist {
+			return t
+		}
+	}
+	return nil
+}
+
 func updateBotState(bot *components.BotData, target *playerInfo, healthPercent float64, physics *components.PhysicsData) {
-	// Retreat if low health
 	if healthPercent < bot.RetreatThreshold && target != nil {
 		bot.AIState = components.BotStateRetreat
 		return
 	}
 
-	// No target - idle (shouldn't happen in PvP)
 	if target == nil {
 		bot.AIState = components.BotStateIdle
 		return
 	}
 
-	// Target in attack range
 	if bot.DistanceToTarget < bot.AttackRange {
 		bot.AIState = components.BotStateAttack
 		return
 	}
 
-	// ALWAYS CHASE - no more patrol
 	bot.AIState = components.BotStateChase
 }
 
-func generateBotInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, obj *components.ObjectData, physics *components.PhysicsData, target *playerInfo, botX, botY float64, space *resolv.Space, navGrid *NavGrid) {
+func generateBotInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, obj *components.ObjectData, physics *components.PhysicsData, target *playerInfo, teammates []*playerInfo, botX, botY float64, space *resolv.Space, navGrid *NavGrid) {
 	switch bot.AIState {
-	case components.BotStateChase:
-		generateChaseInputs(bot, input, player, target, botX, botY, obj, physics, space, navGrid)
-
-	case components.BotStateAttack:
-		generateAttackInputs(bot, input, player, target, botX, botY, physics, space)
-
-	case components.BotStateRetreat:
-		generateRetreatInputs(bot, input, player, target, botX, botY, obj, physics, space)
-
 	case components.BotStateIdle:
-		// Do nothing
+		generateIdleInputs(bot, input, player, obj, physics, space, teammates, botX, botY)
+	case components.BotStateChase:
+		generateChaseInputs(bot, input, player, target, botX, botY, obj, physics, space, navGrid, teammates)
+	case components.BotStateAttack:
+		generateAttackInputs(bot, input, player, target, botX, botY, physics, space, teammates)
+	case components.BotStateRetreat:
+		generateRetreatInputs(bot, input, player, target, botX, botY, obj, physics, space, teammates)
 	}
 }
 
-func generateChaseInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, target *playerInfo, botX, botY float64, obj *components.ObjectData, physics *components.PhysicsData, space *resolv.Space, navGrid *NavGrid) {
+func generateIdleInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, obj *components.ObjectData, physics *components.PhysicsData, space *resolv.Space, teammates []*playerInfo, botX, botY float64) {
+	// Patrol back and forth looking for enemies
+	bot.IdleTimer++
+
+	// Change direction every ~3 seconds or when hitting a wall/gap
+	if bot.IdleTimer > 180 {
+		bot.IdleTimer = 0
+		bot.PatrolDirection = -bot.PatrolDirection
+	}
+
+	// Initialize patrol direction if not set
+	if bot.PatrolDirection == 0 {
+		if rng.Float32() < 0.5 {
+			bot.PatrolDirection = 1
+		} else {
+			bot.PatrolDirection = -1
+		}
+	}
+
+	movingRight := bot.PatrolDirection > 0
+
+	// Check for teammate blocking path - turn around or jump over
+	if blocker := isTeammateBlocking(botX, botY, movingRight, teammates); blocker != nil {
+		// Try to jump over if on ground
+		if physics.OnGround != nil && bot.JumpCooldown <= 0 {
+			input.CurrentInput[cfg.ActionJump] = true
+			bot.JumpCooldown = 30
+		} else {
+			// Turn around
+			bot.PatrolDirection = -bot.PatrolDirection
+			bot.IdleTimer = 0
+		}
+		return
+	}
+
+	// Check for gaps and walls
+	if physics.OnGround != nil {
+		if gapDetected, gapWidth := detectGapAhead(space, obj, movingRight); gapDetected {
+			if gapWidth < cfg.Pathfinding.MaxJumpDistance && bot.JumpCooldown <= 0 {
+				input.CurrentInput[cfg.ActionJump] = true
+				bot.JumpCooldown = 20
+			} else {
+				// Gap too wide, turn around
+				bot.PatrolDirection = -bot.PatrolDirection
+				bot.IdleTimer = 0
+			}
+		}
+	}
+
+	// Move in patrol direction
+	if bot.PatrolDirection > 0 {
+		input.CurrentInput[cfg.ActionMoveRight] = true
+		player.Direction.X = cfg.DirectionRight
+	} else {
+		input.CurrentInput[cfg.ActionMoveLeft] = true
+		player.Direction.X = cfg.DirectionLeft
+	}
+}
+
+func generateChaseInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, target *playerInfo, botX, botY float64, obj *components.ObjectData, physics *components.PhysicsData, space *resolv.Space, navGrid *NavGrid, teammates []*playerInfo) {
 	if target == nil {
 		return
 	}
 
 	dx := target.x - botX
 	dy := target.y - botY
-
-	// Determine movement direction
 	movingRight := dx > 0
-	if dx > 10 {
-		input.CurrentInput[cfg.ActionMoveRight] = true
+
+	// Set facing direction
+	player.Direction.X = cfg.DirectionLeft
+	if movingRight {
 		player.Direction.X = cfg.DirectionRight
-	} else if dx < -10 {
-		input.CurrentInput[cfg.ActionMoveLeft] = true
-		player.Direction.X = cfg.DirectionLeft
 	}
 
-	// Gap detection - jump over gaps when on ground
+	// Handle teammate blocking - jump over or wait
+	if blocker := isTeammateBlocking(botX, botY, movingRight, teammates); blocker != nil {
+		handleTeammateBlocking(bot, input, physics, movingRight, blocker, botY)
+		return
+	}
+
+	// Move toward target
+	if dx > 10 {
+		input.CurrentInput[cfg.ActionMoveRight] = true
+	} else if dx < -10 {
+		input.CurrentInput[cfg.ActionMoveLeft] = true
+	}
+
+	// Jump over gaps
 	if physics.OnGround != nil && bot.JumpCooldown <= 0 {
-		gapDetected, gapWidth := detectGapAhead(space, obj, movingRight)
-		if gapDetected && gapWidth < 240 { // Max jump distance is ~240 pixels
+		if gapDetected, gapWidth := detectGapAhead(space, obj, movingRight); gapDetected && gapWidth < cfg.Pathfinding.MaxJumpDistance {
 			input.CurrentInput[cfg.ActionJump] = true
-			bot.JumpCooldown = 20 // Short cooldown for gap jumps
+			bot.JumpCooldown = 20
 		}
 	}
 
-	// Jump if target is significantly above us
+	// Jump if target is above
 	if dy < -60 && physics.OnGround != nil && bot.JumpCooldown <= 0 {
 		input.CurrentInput[cfg.ActionJump] = true
 		bot.JumpCooldown = 45
 	}
 
-	// Wall jump if wall sliding
+	// Wall jump
 	if physics.WallSliding != nil && bot.JumpCooldown <= 0 {
 		input.CurrentInput[cfg.ActionJump] = true
 		bot.JumpCooldown = 30
 	}
 }
 
-func generateAttackInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, target *playerInfo, botX, botY float64, physics *components.PhysicsData, space *resolv.Space) {
+// handleTeammateBlocking handles movement when a teammate is in the way
+func handleTeammateBlocking(bot *components.BotData, input *components.PlayerInputData, physics *components.PhysicsData, movingRight bool, blocker *playerInfo, botY float64) {
+	onGround := physics.OnGround != nil
+	canJump := bot.JumpCooldown <= 0
+
+	// Jump over teammate if possible
+	if onGround && canJump {
+		input.CurrentInput[cfg.ActionJump] = true
+		bot.JumpCooldown = 25
+	}
+
+	// Continue moving if in air or teammate is below us
+	inAir := !onGround
+	teammateBelow := blocker.y-botY > 5
+
+	if inAir || teammateBelow {
+		if movingRight {
+			input.CurrentInput[cfg.ActionMoveRight] = true
+		} else {
+			input.CurrentInput[cfg.ActionMoveLeft] = true
+		}
+	}
+	// Otherwise wait briefly for teammate to move
+}
+
+func generateAttackInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, target *playerInfo, botX, botY float64, physics *components.PhysicsData, space *resolv.Space, teammates []*playerInfo) {
 	if target == nil {
 		return
 	}
 
-	// Face target
 	dx := target.x - botX
 	dy := target.y - botY
+	movingRight := dx > 0
+
 	if dx > 0 {
 		player.Direction.X = cfg.DirectionRight
 	} else {
@@ -251,8 +390,16 @@ func generateAttackInputs(bot *components.BotData, input *components.PlayerInput
 
 	dist := bot.DistanceToTarget
 
-	// Always move toward target if not in melee range (keep pressure on)
+	// Move toward target if not in melee range
 	if dist > 40 {
+		// Check for teammate blocking
+		if blocker := isTeammateBlocking(botX, botY, movingRight, teammates); blocker != nil {
+			// Jump over teammate
+			if physics.OnGround != nil && bot.JumpCooldown <= 0 {
+				input.CurrentInput[cfg.ActionJump] = true
+				bot.JumpCooldown = 25
+			}
+		}
 		if dx > 0 {
 			input.CurrentInput[cfg.ActionMoveRight] = true
 		} else {
@@ -260,16 +407,12 @@ func generateAttackInputs(bot *components.BotData, input *components.PlayerInput
 		}
 	}
 
-	// Attack cooldown check - can't attack but keep moving
 	if bot.AttackCooldown > 0 {
 		return
 	}
 
-	// Check line of sight for ranged attacks
 	hasLOS := hasLineOfSight(space, botX, botY, target.x, target.y)
 	onGround := physics.OnGround != nil
-
-	// Choose attack based on situation
 	attack := chooseAttack(bot, dist, dy, hasLOS, onGround)
 
 	switch attack {
@@ -281,73 +424,153 @@ func generateAttackInputs(bot *components.BotData, input *components.PlayerInput
 		if bot.JumpCooldown <= 0 {
 			input.CurrentInput[cfg.ActionJump] = true
 			input.CurrentInput[cfg.ActionAttack] = true
-			bot.JumpCooldown = 50 // Increased cooldown
+			bot.JumpCooldown = 50
 			bot.AttackCooldown = 25
 		}
 
 	case AttackBoomerang:
-		// Aim up/down based on target position
 		if dy < -30 {
 			input.CurrentInput[cfg.ActionMoveUp] = true
 		}
 		input.CurrentInput[cfg.ActionBoomerang] = true
 		bot.AttackCooldown = 90
-
-	case AttackApproach:
-		// Already moving above, nothing extra needed
 	}
 }
 
-func generateRetreatInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, target *playerInfo, botX, botY float64, obj *components.ObjectData, physics *components.PhysicsData, space *resolv.Space) {
+func generateRetreatInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, target *playerInfo, botX, botY float64, obj *components.ObjectData, physics *components.PhysicsData, space *resolv.Space, teammates []*playerInfo) {
 	if target == nil {
 		return
 	}
 
 	dx := target.x - botX
+	dy := target.y - botY
 	dist := bot.DistanceToTarget
 
-	// Face target while retreating (to throw boomerangs and counter-attack)
+	// Face target
 	if dx > 0 {
 		player.Direction.X = cfg.DirectionRight
 	} else {
 		player.Direction.X = cfg.DirectionLeft
 	}
 
-	// Move away from target but not constantly - create some space then fight
-	movingRight := dx < 0 // Moving away from target
-	if dist < 120 {
-		if dx > 0 {
-			input.CurrentInput[cfg.ActionMoveLeft] = true
-		} else {
-			input.CurrentInput[cfg.ActionMoveRight] = true
-		}
+	// Update evasion timer for strafing pattern
+	bot.IdleTimer++
 
-		// Gap detection while retreating
-		if physics.OnGround != nil && bot.JumpCooldown <= 0 {
-			gapDetected, gapWidth := detectGapAhead(space, obj, movingRight)
-			if gapDetected && gapWidth < 240 {
-				input.CurrentInput[cfg.ActionJump] = true
-				bot.JumpCooldown = 20
+	// Evasive movement pattern - strafe back and forth while fighting
+	strafePhase := (bot.IdleTimer / 30) % 4 // Change direction every 0.5 seconds
+
+	// Determine intended movement direction
+	var intendedMoveRight, intendedMoveLeft bool
+
+	if dist < 60 {
+		// Too close - back away with random dodges
+		if dx > 0 {
+			intendedMoveLeft = true
+		} else {
+			intendedMoveRight = true
+		}
+		// Panic jump when very close
+		if dist < 35 && physics.OnGround != nil && bot.JumpCooldown <= 0 {
+			input.CurrentInput[cfg.ActionJump] = true
+			bot.JumpCooldown = 40
+		}
+	} else if dist < 150 {
+		// Mid-range - strafe unpredictably while attacking
+		switch strafePhase {
+		case 0:
+			intendedMoveLeft = true
+		case 1:
+			// Brief pause
+		case 2:
+			intendedMoveRight = true
+		case 3:
+			// Brief pause or approach
+			if dist > 100 {
+				if dx > 0 {
+					intendedMoveRight = true
+				} else {
+					intendedMoveLeft = true
+				}
 			}
 		}
+	} else {
+		// Far away - chase the target
+		if dx > 10 {
+			intendedMoveRight = true
+		} else if dx < -10 {
+			intendedMoveLeft = true
+		}
 	}
 
-	// Jump to escape if very close
-	if physics.OnGround != nil && bot.JumpCooldown <= 0 && dist < 40 {
+	// Check for teammate blocking intended movement
+	if intendedMoveRight || intendedMoveLeft {
+		movingRight := intendedMoveRight
+		if blocker := isTeammateBlocking(botX, botY, movingRight, teammates); blocker != nil {
+			// Jump over teammate
+			if physics.OnGround != nil && bot.JumpCooldown <= 0 {
+				input.CurrentInput[cfg.ActionJump] = true
+				bot.JumpCooldown = 25
+			}
+		}
+		if intendedMoveRight {
+			input.CurrentInput[cfg.ActionMoveRight] = true
+		}
+		if intendedMoveLeft {
+			input.CurrentInput[cfg.ActionMoveLeft] = true
+		}
+	}
+
+	// Determine current movement direction for gap detection
+	movingRight := input.CurrentInput[cfg.ActionMoveRight]
+	movingLeft := input.CurrentInput[cfg.ActionMoveLeft]
+
+	// Jump over gaps
+	if physics.OnGround != nil && bot.JumpCooldown <= 0 && (movingRight || movingLeft) {
+		if gapDetected, gapWidth := detectGapAhead(space, obj, movingRight); gapDetected && gapWidth < cfg.Pathfinding.MaxJumpDistance {
+			input.CurrentInput[cfg.ActionJump] = true
+			bot.JumpCooldown = 20
+		}
+	}
+
+	// Jump to reach target on higher platforms
+	if dy < -60 && physics.OnGround != nil && bot.JumpCooldown <= 0 {
 		input.CurrentInput[cfg.ActionJump] = true
-		bot.JumpCooldown = 60
+		bot.JumpCooldown = 45
 	}
 
-	// Be aggressive even while retreating!
+	// Evasive jumps - occasionally jump to be unpredictable
+	if physics.OnGround != nil && bot.JumpCooldown <= 0 && rng.Float32() < 0.02 {
+		input.CurrentInput[cfg.ActionJump] = true
+		bot.JumpCooldown = 50
+	}
+
+	// Wall jump to escape
+	if physics.WallSliding != nil && bot.JumpCooldown <= 0 {
+		input.CurrentInput[cfg.ActionJump] = true
+		bot.JumpCooldown = 30
+	}
+
+	// Aggressive counter-attacks
 	if bot.AttackCooldown <= 0 {
-		// Throw boomerang at medium range - good for retreating
-		if dist > 60 && dist < 250 {
+		if dist > 80 && dist < 250 {
+			// Boomerang at range
 			input.CurrentInput[cfg.ActionBoomerang] = true
-			bot.AttackCooldown = 70
-		} else if dist < 50 {
-			// Counter-attack if close - punch them away
+			bot.AttackCooldown = 60
+		} else if dist < 80 && dist > 50 {
+			// Jump kick to close distance aggressively
+			if physics.OnGround != nil && rng.Float32() < 0.4 {
+				input.CurrentInput[cfg.ActionJump] = true
+				input.CurrentInput[cfg.ActionAttack] = true
+				bot.AttackCooldown = 45
+				bot.JumpCooldown = 30
+			} else {
+				input.CurrentInput[cfg.ActionAttack] = true
+				bot.AttackCooldown = 25
+			}
+		} else if dist <= 50 {
+			// Melee range - punch
 			input.CurrentInput[cfg.ActionAttack] = true
-			bot.AttackCooldown = 30
+			bot.AttackCooldown = 20
 		}
 	}
 }
@@ -358,22 +581,19 @@ func distance(x1, y1, x2, y2 float64) float64 {
 	return math.Sqrt(dx*dx + dy*dy)
 }
 
-// detectGapAhead checks if there's a gap in front of the bot
-// Returns (gapDetected, gapWidth) - gapWidth is approximate distance to next ground
+// detectGapAhead checks for gaps ahead and returns (detected, width).
 func detectGapAhead(space *resolv.Space, obj *components.ObjectData, movingRight bool) (bool, float64) {
 	if space == nil {
 		return false, 0
 	}
 
-	// Use config values for gap detection
 	checkDist := cfg.Pathfinding.GapCheckDist
 	checkDepth := cfg.Pathfinding.GapCheckDepth
 	maxScanDist := cfg.Pathfinding.MaxJumpDistance
 	scanStep := cfg.Pathfinding.LOSStepSize
 
-	// Start position - bottom edge of bot, ahead in movement direction
 	startX := obj.X + obj.W/2
-	startY := obj.Y + obj.H // Bottom of bot
+	startY := obj.Y + obj.H
 
 	if movingRight {
 		startX = obj.X + obj.W + checkDist
@@ -381,26 +601,18 @@ func detectGapAhead(space *resolv.Space, obj *components.ObjectData, movingRight
 		startX = obj.X - checkDist
 	}
 
-	// Check if there's ground directly below the check point
-	hasGroundBelow := false
+	// Check for ground below
 	for _, checkObj := range space.Objects() {
 		if !checkObj.HasTags(tags.ResolvSolid) {
 			continue
 		}
-
-		// Check if this object is below our check point
 		if startX >= checkObj.X && startX <= checkObj.X+checkObj.W &&
 			checkObj.Y >= startY && checkObj.Y <= startY+checkDepth {
-			hasGroundBelow = true
-			break
+			return false, 0
 		}
 	}
 
-	if hasGroundBelow {
-		return false, 0 // No gap, ground exists ahead
-	}
-
-	// Gap detected - now measure how wide it is
+	// Measure gap width
 	direction := 1.0
 	if !movingRight {
 		direction = -1.0
@@ -413,25 +625,20 @@ func detectGapAhead(space *resolv.Space, obj *components.ObjectData, movingRight
 			if !checkObj.HasTags(tags.ResolvSolid) {
 				continue
 			}
-
-			// Check if this object provides ground at scan position
 			if scanX >= checkObj.X && scanX <= checkObj.X+checkObj.W &&
 				checkObj.Y >= startY && checkObj.Y <= startY+checkDepth*2 {
-				// Found ground - return gap width
 				return true, dist - checkDist
 			}
 		}
 	}
 
-	// Very wide gap (wider than max jump) - still report it
 	return true, maxScanDist
 }
 
-// hasLineOfSight checks if there's a clear path between two points
-// Uses manual AABB intersection to avoid modifying the physics space
+// hasLineOfSight checks for clear path using manual AABB intersection.
 func hasLineOfSight(space *resolv.Space, x1, y1, x2, y2 float64) bool {
 	if space == nil {
-		return true // Assume clear if no space available
+		return true
 	}
 
 	dx := x2 - x1
@@ -442,11 +649,9 @@ func hasLineOfSight(space *resolv.Space, x1, y1, x2, y2 float64) bool {
 		return true
 	}
 
-	// Normalize direction
 	dx /= dist
 	dy /= dist
 
-	// Use config values for LOS checks
 	stepSize := cfg.Pathfinding.LOSStepSize
 	checkSize := cfg.Pathfinding.LOSCheckSize
 
@@ -454,24 +659,20 @@ func hasLineOfSight(space *resolv.Space, x1, y1, x2, y2 float64) bool {
 		checkX := x1 + dx*d
 		checkY := y1 + dy*d
 
-		// Check against all objects with ResolvSolid tag using manual AABB
 		for _, obj := range space.Objects() {
 			if !obj.HasTags(tags.ResolvSolid) {
 				continue
 			}
-
-			// Simple AABB intersection check
 			if checkX+checkSize > obj.X && checkX-checkSize < obj.X+obj.W &&
 				checkY+checkSize > obj.Y && checkY-checkSize < obj.Y+obj.H {
-				return false // Blocked
+				return false
 			}
 		}
 	}
 
-	return true // Clear line of sight
+	return true
 }
 
-// AttackChoice represents possible attack options
 type AttackChoice int
 
 const (
@@ -481,40 +682,32 @@ const (
 	AttackApproach
 )
 
-// Pre-allocated buffers for chooseAttack to avoid allocations in hot path
+// Pre-allocated buffers to avoid allocations
 var (
 	attackOptions = make([]AttackChoice, 0, 4)
 	attackWeights = make([]float64, 0, 4)
 )
 
-// chooseAttack selects an attack based on situation with weighted randomness
 func chooseAttack(bot *components.BotData, dist float64, dy float64, hasLOS bool, onGround bool) AttackChoice {
-	// Reset pre-allocated slices
 	options := attackOptions[:0]
 	weights := attackWeights[:0]
-
-	// Use config values for attack thresholds
 	combat := &cfg.BotCombat
 
-	// Punch always viable at close range - high weight
 	if dist < combat.PunchRange {
 		options = append(options, AttackPunch)
 		weights = append(weights, 5.0)
 	}
 
-	// Jump kick only occasionally and at specific range
 	if dist < combat.JumpKickMaxRange && dist > combat.JumpKickMinRange && onGround {
 		options = append(options, AttackJumpKick)
-		weights = append(weights, 0.5) // Low weight - rare jump kicks
+		weights = append(weights, 0.5)
 	}
 
-	// Boomerang at medium-long range with LOS
 	if dist > combat.BoomerangMinRange && dist < combat.BoomerangMaxRange && hasLOS {
 		options = append(options, AttackBoomerang)
 		weights = append(weights, 2.0)
 	}
 
-	// Approach if not in melee range - always an option
 	if dist > combat.ApproachMinRange {
 		options = append(options, AttackApproach)
 		weights = append(weights, 3.0)
@@ -524,7 +717,6 @@ func chooseAttack(bot *components.BotData, dist float64, dy float64, hasLOS bool
 		return AttackApproach
 	}
 
-	// Weighted random selection
 	totalWeight := 0.0
 	for _, w := range weights {
 		totalWeight += w
@@ -542,64 +734,66 @@ func chooseAttack(bot *components.BotData, dist float64, dy float64, hasLOS bool
 	return options[len(options)-1]
 }
 
-// ThreatType identifies what kind of attack is incoming
 type ThreatType int
 
 const (
-	ThreatNone      ThreatType = iota
-	ThreatBoomerang            // Incoming boomerang projectile
-	ThreatMelee                // Player in attack animation nearby
+	ThreatNone ThreatType = iota
+	ThreatBoomerang
+	ThreatMelee
 )
 
-// ThreatInfo describes an incoming attack
 type ThreatInfo struct {
 	Type      ThreatType
-	X, Y      float64 // Threat position
-	VelX      float64 // Horizontal velocity (for boomerangs)
-	VelY      float64 // Vertical velocity
-	TimeToHit int     // Frames until impact (estimate)
+	X, Y      float64
+	VelX      float64
+	VelY      float64
+	TimeToHit int
 }
 
-// Pre-allocated threat info to avoid allocations in hot path
 var cachedThreatInfo ThreatInfo
 
-// detectIncomingThreats scans for boomerangs and attacking players
-// Returns pointer to cached ThreatInfo (valid until next call) or nil if no threat
-func detectIncomingThreats(e *ecs.ECS, botX, botY float64, botPlayerIndex int) *ThreatInfo {
+func detectIncomingThreats(e *ecs.ECS, botX, botY float64, botPlayerIndex int, botTeam int, players []playerInfo) *ThreatInfo {
 	foundThreat := false
 	closestTime := 999
 
-	// Check for incoming boomerangs
+	getPlayerTeam := func(playerIndex int) int {
+		for i := range players {
+			if players[i].playerIndex == playerIndex {
+				return players[i].team
+			}
+		}
+		return -1
+	}
+
 	components.Boomerang.Each(e.World, func(entry *donburi.Entry) {
 		b := components.Boomerang.Get(entry)
 
-		// Skip own boomerang
 		if b.OwnerIndex == botPlayerIndex {
+			return
+		}
+
+		if botTeam != -1 && getPlayerTeam(b.OwnerIndex) == botTeam {
 			return
 		}
 
 		obj := components.Object.Get(entry)
 		physics := components.Physics.Get(entry)
 
-		// Is boomerang heading toward us?
 		dx := botX - obj.X
 		dy := botY - obj.Y
 		dist := math.Sqrt(dx*dx + dy*dy)
 
-		// Check if boomerang is moving toward bot
 		dotProduct := dx*physics.SpeedX + dy*physics.SpeedY
 		if dotProduct <= 0 {
-			return // Moving away from us
+			return
 		}
 
-		// Estimate time to impact
 		speed := math.Sqrt(physics.SpeedX*physics.SpeedX + physics.SpeedY*physics.SpeedY)
 		if speed < 0.1 {
 			return
 		}
 		timeToHit := int(dist / speed)
 
-		// Only react if boomerang is close and heading our way
 		if dist < 200 && timeToHit < closestTime && timeToHit < 60 {
 			closestTime = timeToHit
 			foundThreat = true
@@ -612,16 +806,17 @@ func detectIncomingThreats(e *ecs.ECS, botX, botY float64, botPlayerIndex int) *
 		}
 	})
 
-	// Check for nearby attacking players
 	tags.Player.Each(e.World, func(entry *donburi.Entry) {
-		player := components.Player.Get(entry)
+		playerData := components.Player.Get(entry)
 
-		// Skip self
-		if player.PlayerIndex == botPlayerIndex {
+		if playerData.PlayerIndex == botPlayerIndex {
 			return
 		}
 
-		// Skip if player not in attack state
+		if botTeam != -1 && getPlayerTeam(playerData.PlayerIndex) == botTeam {
+			return
+		}
+
 		state := components.State.Get(entry)
 		if state.CurrentState != cfg.Punch01 && state.CurrentState != cfg.Kick01 &&
 			state.CurrentState != cfg.StateAttackingPunch && state.CurrentState != cfg.StateAttackingKick {
@@ -633,16 +828,15 @@ func detectIncomingThreats(e *ecs.ECS, botX, botY float64, botPlayerIndex int) *
 		dy := botY - obj.Y
 		dist := math.Sqrt(dx*dx + dy*dy)
 
-		// React to nearby attackers
 		if dist < 80 {
-			timeToHit := 10 // Melee is fast
+			timeToHit := 10
 			if timeToHit < closestTime {
 				closestTime = timeToHit
 				foundThreat = true
 				cachedThreatInfo.Type = ThreatMelee
 				cachedThreatInfo.X = obj.X
 				cachedThreatInfo.Y = obj.Y
-				cachedThreatInfo.VelX = float64(player.Direction.X) * 5
+				cachedThreatInfo.VelX = float64(playerData.Direction.X) * 5
 				cachedThreatInfo.VelY = 0
 				cachedThreatInfo.TimeToHit = timeToHit
 			}
@@ -655,44 +849,34 @@ func detectIncomingThreats(e *ecs.ECS, botX, botY float64, botPlayerIndex int) *
 	return nil
 }
 
-// generateDefensiveInputs reacts to incoming threats
 func generateDefensiveInputs(bot *components.BotData, input *components.PlayerInputData, player *components.PlayerData, threat *ThreatInfo, botX, botY float64, physics *components.PhysicsData) bool {
 	if threat == nil {
-		return false // No threat, don't override other inputs
+		return false
 	}
 
-	// Only react to boomerangs - melee is handled by normal combat
-	// This reduces excessive defensive jumping
+	// Only react to boomerangs
 	if threat.Type != ThreatBoomerang {
 		return false
 	}
 
-	// Only react if threat is imminent based on difficulty
-	reactionFrames := bot.ReactionDelay + 5 // Give a bit more buffer
+	reactionFrames := bot.ReactionDelay + 5
 	if threat.TimeToHit > reactionFrames {
-		return false // Too far away to react yet
+		return false
 	}
 
-	// Determine best evasion based on threat trajectory
 	threatComingFromLeft := threat.VelX > 0
-	threatComingHigh := threat.Y < botY-30 // Increased threshold
-	threatComingLow := threat.Y > botY+30  // Increased threshold
+	threatComingHigh := threat.Y < botY-30
+	threatComingLow := threat.Y > botY+30
 
-	// Boomerangs: duck if coming high, jump if coming low
 	if threatComingHigh {
-		// DUCK - boomerang will pass overhead
 		input.CurrentInput[cfg.ActionCrouch] = true
 		return true
-	} else if threatComingLow {
-		// JUMP - boomerang will pass underneath (only if clearly low)
-		if physics.OnGround != nil && bot.JumpCooldown <= 0 {
-			input.CurrentInput[cfg.ActionJump] = true
-			bot.JumpCooldown = 40 // Longer cooldown
-			return true
-		}
+	} else if threatComingLow && physics.OnGround != nil && bot.JumpCooldown <= 0 {
+		input.CurrentInput[cfg.ActionJump] = true
+		bot.JumpCooldown = 40
+		return true
 	}
 
-	// For mid-height boomerangs, just try to move away instead of jumping
 	if threatComingFromLeft {
 		input.CurrentInput[cfg.ActionMoveRight] = true
 	} else {
@@ -701,13 +885,11 @@ func generateDefensiveInputs(bot *components.BotData, input *components.PlayerIn
 	return true
 }
 
-// getOrCreateNavGrid returns cached nav grid or creates a new one
 func getOrCreateNavGrid(e *ecs.ECS, space *resolv.Space) *NavGrid {
 	if space == nil {
 		return nil
 	}
 
-	// Get level data to check if we need to rebuild
 	levelEntry, ok := components.Level.First(e.World)
 	if !ok {
 		return nil
@@ -718,18 +900,11 @@ func getOrCreateNavGrid(e *ecs.ECS, space *resolv.Space) *NavGrid {
 	}
 	currentLevelID := levelData.CurrentLevel.Name
 
-	// Return cached grid if still valid
 	if cachedNavGrid != nil && navGridLevelID == currentLevelID {
 		return cachedNavGrid
 	}
 
-	// Build new nav grid
-	// Cell size of 32 pixels works well for character-sized navigation
-	cellSize := 32.0
-	levelWidth := levelData.CurrentLevel.Width
-	levelHeight := levelData.CurrentLevel.Height
-
-	cachedNavGrid = CreateNavGrid(space, levelWidth, levelHeight, cellSize)
+	cachedNavGrid = CreateNavGrid(space, levelData.CurrentLevel.Width, levelData.CurrentLevel.Height, 32.0)
 	navGridLevelID = currentLevelID
 
 	return cachedNavGrid

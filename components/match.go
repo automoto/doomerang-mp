@@ -30,14 +30,18 @@ var Match = donburi.NewComponentType[MatchData]()
 
 // GetPlayerScore returns the score for a player, creating it if needed
 func (m *MatchData) GetPlayerScore(playerIndex int) *PlayerScore {
-	// Ensure slice is large enough
-	for len(m.Scores) <= playerIndex {
-		m.Scores = append(m.Scores, PlayerScore{
-			PlayerIndex: len(m.Scores),
-			Team:        -1, // Default to no team (FFA)
-		})
+	// Search for existing score by PlayerIndex
+	for i := range m.Scores {
+		if m.Scores[i].PlayerIndex == playerIndex {
+			return &m.Scores[i]
+		}
 	}
-	return &m.Scores[playerIndex]
+	// Not found - create a new entry
+	m.Scores = append(m.Scores, PlayerScore{
+		PlayerIndex: playerIndex,
+		Team:        -1, // Default to no team (FFA)
+	})
+	return &m.Scores[len(m.Scores)-1]
 }
 
 // AddKO increments KO count for a player

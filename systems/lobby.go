@@ -95,12 +95,12 @@ func CanStartMatch(lobby *components.LobbyData) bool {
 	case cfg.GameModeFreeForAll:
 		return playerCount >= 2
 	case cfg.GameModeCoopVsBots:
-		return humanCount >= 1 && GetBotCount(lobby) >= 1
+		return humanCount >= 1 && GetBotCount(lobby) >= 1 && hasValidCoopTeams(lobby)
 	}
 	return false
 }
 
-// hasValidTeams checks if team assignments are valid for team modes
+// hasValidTeams checks if team assignments are valid for 2v2 mode
 func hasValidTeams(lobby *components.LobbyData) bool {
 	team0Count, team1Count := 0, 0
 	for _, slot := range lobby.Slots {
@@ -117,6 +117,26 @@ func hasValidTeams(lobby *components.LobbyData) bool {
 		}
 	}
 	return team0Count == 2 && team1Count == 2
+}
+
+// hasValidCoopTeams checks if team assignments are valid for Co-op mode
+// Requires at least one player on each team
+func hasValidCoopTeams(lobby *components.LobbyData) bool {
+	team0Count, team1Count := 0, 0
+	for _, slot := range lobby.Slots {
+		if slot.Type == components.SlotEmpty {
+			continue
+		}
+		switch slot.Team {
+		case 0:
+			team0Count++
+		case 1:
+			team1Count++
+		default:
+			return false // Player not assigned to team
+		}
+	}
+	return team0Count >= 1 && team1Count >= 1
 }
 
 // CycleSlotType cycles the slot type (Empty -> Human -> Bot -> Empty)
@@ -141,6 +161,8 @@ func CycleSlotType(lobby *components.LobbyData, slotIndex int) {
 		slot.GamepadID = nil
 		slot.KeyboardZone = components.KeyboardZoneNone
 	}
+	// Re-assign teams when slot type changes (important for Co-op mode)
+	AutoAssignTeams(lobby)
 }
 
 // CycleSlotTypeReverse cycles backwards (Empty <- Human <- Bot <- Empty)
@@ -162,6 +184,8 @@ func CycleSlotTypeReverse(lobby *components.LobbyData, slotIndex int) {
 		slot.GamepadID = nil
 		slot.KeyboardZone = components.KeyboardZoneNone
 	}
+	// Re-assign teams when slot type changes (important for Co-op mode)
+	AutoAssignTeams(lobby)
 }
 
 // CycleTeam cycles the team assignment for a slot
@@ -273,6 +297,39 @@ func UpdateDetectedGamepads(lobby *components.LobbyData) {
 // CycleGameMode cycles through available game modes
 func CycleGameMode(lobby *components.LobbyData) {
 	lobby.GameMode = (lobby.GameMode + 1) % 4
+	// Auto-assign teams when switching to team-based modes
+	AutoAssignTeams(lobby)
+}
+
+// AutoAssignTeams automatically assigns teams based on game mode
+func AutoAssignTeams(lobby *components.LobbyData) {
+	switch lobby.GameMode {
+	case cfg.GameModeFreeForAll, cfg.GameMode1v1:
+		// No teams - set all to -1
+		for i := range lobby.Slots {
+			lobby.Slots[i].Team = -1
+		}
+	case cfg.GameMode2v2:
+		// Slots 0,1 = Team 0 (Red), Slots 2,3 = Team 1 (Blue)
+		for i := range lobby.Slots {
+			if i < 2 {
+				lobby.Slots[i].Team = 0
+			} else {
+				lobby.Slots[i].Team = 1
+			}
+		}
+	case cfg.GameModeCoopVsBots:
+		// Humans = Team 0, Bots = Team 1
+		for i := range lobby.Slots {
+			if lobby.Slots[i].Type == components.SlotHuman {
+				lobby.Slots[i].Team = 0
+			} else if lobby.Slots[i].Type == components.SlotBot {
+				lobby.Slots[i].Team = 1
+			} else {
+				lobby.Slots[i].Team = -1
+			}
+		}
+	}
 }
 
 // CycleMatchTime cycles match duration (1-5 minutes)

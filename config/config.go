@@ -349,6 +349,11 @@ type PathfindingConfig struct {
 	GapCheckDepth   float64 // How far down to check for ground (pixels)
 	LOSStepSize     float64 // Step size for line-of-sight raycasts (pixels)
 	LOSCheckSize    float64 // Size of LOS check points (pixels)
+
+	// Teammate collision avoidance
+	TeammateDetectRange      float64 // Range to detect nearby teammates
+	TeammateBlockingDist     float64 // Distance at which teammate blocks movement
+	TeammateVerticalTolerance float64 // Vertical tolerance for blocking detection
 }
 
 // BotCombatConfig contains bot attack decision thresholds
@@ -879,6 +884,10 @@ func init() {
 		GapCheckDepth:   48.0,  // Check 3 tiles down for ground
 		LOSStepSize:     16.0,  // Step size for line-of-sight checks (1 tile)
 		LOSCheckSize:    4.0,   // Size of LOS check points
+
+		TeammateDetectRange:       80.0, // Range to detect nearby teammates
+		TeammateBlockingDist:      50.0, // Distance at which teammate blocks movement
+		TeammateVerticalTolerance: 40.0, // Vertical tolerance for blocking detection
 	}
 
 	// Bot Combat Config (attack decision thresholds)

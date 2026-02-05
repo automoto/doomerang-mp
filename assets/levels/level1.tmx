@@ -213,53 +213,6 @@
    </properties>
   </object>
  </objectgroup>
- <objectgroup color="#ff9300" id="7" name="EnemySpawn" visible="0">
-  <properties>
-   <property name="render" type="bool" value="false"/>
-  </properties>
-  <object id="21" x="2701.81" y="2003.23">
-   <properties>
-    <property name="enemyType" value="LightGuard"/>
-    <property name="pathName" value="enemy1"/>
-   </properties>
-  </object>
-  <object id="22" x="3688" y="2002.5">
-   <properties>
-    <property name="enemyType" value="LightGuard"/>
-    <property name="pathName" value="enemy2"/>
-   </properties>
-  </object>
-  <object id="23" x="3265.45" y="1424.28">
-   <properties>
-    <property name="enemyType" value="LightGuard"/>
-    <property name="pathName" value="enemy3"/>
-   </properties>
-  </object>
-  <object id="75" x="2133.43" y="198.477">
-   <properties>
-    <property name="enemyType" value="KnifeThrower"/>
-    <property name="pathName" value="enemy4"/>
-   </properties>
-  </object>
-  <object id="89" x="2648.17" y="1428.67">
-   <properties>
-    <property name="enemyType" value="LightGuard"/>
-    <property name="pathName" value="enemy5"/>
-   </properties>
-  </object>
-  <object id="90" x="2548.83" y="355.773">
-   <properties>
-    <property name="enemyType" value="LightGuard"/>
-    <property name="pathName" value="enemy8"/>
-   </properties>
-  </object>
-  <object id="91" x="2866.67" y="244.485">
-   <properties>
-    <property name="enemyType" value="KnifeThrower"/>
-    <property name="pathName" value="enemy7"/>
-   </properties>
-  </object>
- </objectgroup>
  <objectgroup color="#ff7e79" id="13" name="Obstacles" visible="0">
   <object id="69" type="fire_continuous" x="354.144" y="400.534">
    <properties>

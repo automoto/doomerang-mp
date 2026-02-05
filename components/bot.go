@@ -32,6 +32,10 @@ type BotData struct {
 	AttackCooldown int // Frames until can attack again
 	JumpCooldown   int // Frames until can jump again
 
+	// Idle patrol state
+	IdleTimer       int // Frames spent in idle patrol
+	PatrolDirection int // 1 = right, -1 = left, 0 = unset
+
 	// Behavior tuning (set from config based on difficulty)
 	ReactionDelay    int     // Frames to delay reactions
 	AttackRange      float64 // Distance to start attacking

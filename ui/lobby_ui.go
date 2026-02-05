@@ -28,8 +28,8 @@ type LobbyUI struct {
 	slotLabels      [4]*widget.Label
 	slotTypeButtons [4]*widget.Button
 	schemeButtons   [4]*widget.Button // Control scheme buttons
-	diffLabels      [4]*widget.Label
-	teamLabels      [4]*widget.Label
+	diffButtons     [4]*widget.Button // Bot difficulty buttons
+	teamButtons     [4]*widget.Button // Team selection buttons
 	gameModeLabel   *widget.Label
 	matchTimeLabel  *widget.Label
 	startButton     *widget.Button
@@ -39,6 +39,9 @@ type LobbyUI struct {
 	titleFace  text.Face
 	normalFace text.Face
 	smallFace  text.Face
+
+	// Initialization tracking
+	initialized bool
 }
 
 // Player colors for visual identification
@@ -231,25 +234,49 @@ func (lui *LobbyUI) buildSlotRow(slotIndex int) *widget.Container {
 		}),
 	)
 
-	// Difficulty label (for bots)
+	// Difficulty button (for bots) - clickable to change difficulty
 	initialDiffLabel := ""
 	if slot.Type == components.SlotBot {
 		initialDiffLabel = systems.GetBotDifficultyName(slot.BotDifficulty)
 	}
-	lui.diffLabels[slotIndex] = widget.NewLabel(
-		widget.LabelOpts.Text(initialDiffLabel, &lui.smallFace, &widget.LabelColor{
-			Idle: color.RGBA{180, 180, 180, 255},
+	diffButton := widget.NewButton(
+		widget.ButtonOpts.WidgetOpts(
+			widget.WidgetOpts.MinSize(55, 20),
+		),
+		widget.ButtonOpts.Image(lui.buttonImage()),
+		widget.ButtonOpts.Text(initialDiffLabel, &lui.smallFace, &widget.ButtonTextColor{
+			Idle:     color.RGBA{180, 180, 180, 255},
+			Hover:    color.RGBA{255, 255, 200, 255},
+			Pressed:  color.RGBA{200, 200, 200, 255},
+			Disabled: color.RGBA{100, 100, 100, 255},
+		}),
+		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+			systems.CycleBotDifficulty(lui.Lobby, idx)
+			lui.UpdateUI()
 		}),
 	)
-	row.AddChild(lui.diffLabels[slotIndex])
+	lui.diffButtons[slotIndex] = diffButton
+	row.AddChild(diffButton)
 
-	// Team label
-	lui.teamLabels[slotIndex] = widget.NewLabel(
-		widget.LabelOpts.Text("", &lui.smallFace, &widget.LabelColor{
-			Idle: color.RGBA{180, 180, 180, 255},
+	// Team button (for team modes) - clickable to change team
+	teamButton := widget.NewButton(
+		widget.ButtonOpts.WidgetOpts(
+			widget.WidgetOpts.MinSize(55, 20),
+		),
+		widget.ButtonOpts.Image(lui.buttonImage()),
+		widget.ButtonOpts.Text("", &lui.smallFace, &widget.ButtonTextColor{
+			Idle:     color.RGBA{180, 180, 180, 255},
+			Hover:    color.RGBA{255, 255, 200, 255},
+			Pressed:  color.RGBA{200, 200, 200, 255},
+			Disabled: color.RGBA{100, 100, 100, 255},
+		}),
+		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+			systems.CycleTeam(lui.Lobby, idx)
+			lui.UpdateUI()
 		}),
 	)
-	row.AddChild(lui.teamLabels[slotIndex])
+	lui.teamButtons[slotIndex] = teamButton
+	row.AddChild(teamButton)
 
 	return row
 }
@@ -454,22 +481,34 @@ func (lui *LobbyUI) UpdateUI() {
 			lui.schemeButtons[i].GetWidget().Disabled = !canCycleScheme
 		}
 
-		// Update difficulty label (only for bots)
-		if lui.diffLabels[i] != nil {
-			if slot.Type == components.SlotBot {
-				lui.diffLabels[i].Label = systems.GetBotDifficultyName(slot.BotDifficulty)
-			} else {
-				lui.diffLabels[i].Label = ""
+		// Update difficulty button (only for bots)
+		if lui.diffButtons[i] != nil {
+			isBot := slot.Type == components.SlotBot
+			if textWidget := lui.diffButtons[i].Text(); textWidget != nil {
+				if isBot {
+					textWidget.Label = systems.GetBotDifficultyName(slot.BotDifficulty)
+				} else {
+					textWidget.Label = ""
+				}
 			}
+			lui.diffButtons[i].GetWidget().Disabled = !isBot
 		}
 
-		// Update team label (only in team modes)
-		if lui.teamLabels[i] != nil {
-			if lui.Lobby.GameMode == cfg.GameMode2v2 && slot.Type != components.SlotEmpty {
-				lui.teamLabels[i].Label = "Team: " + systems.GetTeamName(slot.Team)
-			} else {
-				lui.teamLabels[i].Label = ""
+		// Update team button (only in team modes)
+		if lui.teamButtons[i] != nil {
+			isTeamMode := lui.Lobby.GameMode == cfg.GameMode2v2 || lui.Lobby.GameMode == cfg.GameModeCoopVsBots
+			isActive := slot.Type != components.SlotEmpty
+			showTeam := isTeamMode && isActive
+			if textWidget := lui.teamButtons[i].Text(); textWidget != nil {
+				if showTeam {
+					textWidget.Label = systems.GetTeamName(slot.Team)
+				} else {
+					textWidget.Label = ""
+				}
 			}
+			// Allow manual team changes in both 2v2 and Co-op modes
+			canChangeTeam := isTeamMode && isActive
+			lui.teamButtons[i].GetWidget().Disabled = !canChangeTeam
 		}
 	}
 
@@ -511,8 +550,14 @@ func (lui *LobbyUI) getValidationMessage() string {
 	if lui.Lobby.GameMode == cfg.GameMode2v2 && playerCount != 4 {
 		return "2v2 requires exactly 4 players"
 	}
-	if lui.Lobby.GameMode == cfg.GameModeCoopVsBots && botCount < 1 {
-		return "Co-op mode requires at least 1 bot"
+	if lui.Lobby.GameMode == cfg.GameModeCoopVsBots {
+		if botCount < 1 {
+			return "Co-op mode requires at least 1 bot"
+		}
+		// Check team balance
+		if !lui.hasPlayersOnBothTeams() {
+			return "Need at least 1 player on each team"
+		}
 	}
 	if playerCount < 2 {
 		return "Need at least 2 players"
@@ -520,7 +565,27 @@ func (lui *LobbyUI) getValidationMessage() string {
 	return ""
 }
 
+func (lui *LobbyUI) hasPlayersOnBothTeams() bool {
+	team0, team1 := 0, 0
+	for _, slot := range lui.Lobby.Slots {
+		if slot.Type == components.SlotEmpty {
+			continue
+		}
+		if slot.Team == 0 {
+			team0++
+		} else if slot.Team == 1 {
+			team1++
+		}
+	}
+	return team0 >= 1 && team1 >= 1
+}
+
 // Update calls the UI's Update method
 func (lui *LobbyUI) Update() {
 	lui.UI.Update()
+	// Update UI state on first frame after widgets are validated
+	if !lui.initialized {
+		lui.initialized = true
+		lui.UpdateUI()
+	}
 }
