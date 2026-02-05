@@ -31,12 +31,20 @@ func DrawAnimated(ecs *ecs.ECS, screen *ebiten.Image) {
 	camera := components.Camera.Get(cameraEntry)
 	width, height := screen.Bounds().Dx(), screen.Bounds().Dy()
 
-	// Culling bounds
+	// Safety check for zero zoom
+	zoom := camera.Zoom
+	if zoom == 0 {
+		zoom = 1.0
+	}
+
+	// Culling bounds (adjusted for zoom - when zoomed out, more is visible)
 	padding := 64.0
-	minX := camera.Position.X - float64(width)/2 - padding
-	maxX := camera.Position.X + float64(width)/2 + padding
-	minY := camera.Position.Y - float64(height)/2 - padding
-	maxY := camera.Position.Y + float64(height)/2 + padding
+	halfVisibleW := float64(width) / 2 / zoom
+	halfVisibleH := float64(height) / 2 / zoom
+	minX := camera.Position.X - halfVisibleW - padding
+	maxX := camera.Position.X + halfVisibleW + padding
+	minY := camera.Position.Y - halfVisibleH - padding
+	maxY := camera.Position.Y + halfVisibleH + padding
 
 	components.Animation.Each(ecs.World, func(e *donburi.Entry) {
 		o := components.Object.Get(e)
@@ -153,8 +161,10 @@ func DrawAnimated(ecs *ecs.ECS, screen *ebiten.Image) {
 					drawOp.GeoM.Translate(o.X+o.W/2, o.Y+o.H)
 				}
 
-				// Apply the camera translation.
-				drawOp.GeoM.Translate(float64(width)/2-camera.Position.X, float64(height)/2-camera.Position.Y)
+				// Apply the camera translation with zoom.
+				drawOp.GeoM.Translate(-camera.Position.X, -camera.Position.Y)
+				drawOp.GeoM.Scale(zoom, zoom)
+				drawOp.GeoM.Translate(float64(width)/2, float64(height)/2)
 
 				// Flicker effect if invulnerable
 				if isEnemy {
@@ -206,12 +216,12 @@ func DrawAnimated(ecs *ecs.ECS, screen *ebiten.Image) {
 				}
 			}
 
-			// Calculate screen position for debug rect
-			screenX := float64(width)/2 - camera.Position.X + o.X
-			screenY := float64(height)/2 - camera.Position.Y + o.Y
+			// Calculate screen position for debug rect with zoom
+			screenX := (o.X-camera.Position.X)*zoom + float64(width)/2
+			screenY := (o.Y-camera.Position.Y)*zoom + float64(height)/2
 
 			// This debug draw doesn't need to be camera-aware, as it's for debugging.
-			vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(o.W), float32(o.H), entityColor, false)
+			vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(o.W*zoom), float32(o.H*zoom), entityColor, false)
 		}
 	})
 }
@@ -225,12 +235,20 @@ func DrawHealthBars(ecs *ecs.ECS, screen *ebiten.Image) {
 	camera := components.Camera.Get(cameraEntry)
 	width, height := screen.Bounds().Dx(), screen.Bounds().Dy()
 
-	// Culling bounds
+	// Safety check for zero zoom
+	zoom := camera.Zoom
+	if zoom == 0 {
+		zoom = 1.0
+	}
+
+	// Culling bounds (adjusted for zoom)
 	padding := 64.0
-	minX := camera.Position.X - float64(width)/2 - padding
-	maxX := camera.Position.X + float64(width)/2 + padding
-	minY := camera.Position.Y - float64(height)/2 - padding
-	maxY := camera.Position.Y + float64(height)/2 + padding
+	halfVisibleW := float64(width) / 2 / zoom
+	halfVisibleH := float64(height) / 2 / zoom
+	minX := camera.Position.X - halfVisibleW - padding
+	maxX := camera.Position.X + halfVisibleW + padding
+	minY := camera.Position.Y - halfVisibleH - padding
+	maxY := camera.Position.Y + halfVisibleH + padding
 
 	// Iterate over entities with Health and HealthBar components
 	components.HealthBar.Each(ecs.World, func(e *donburi.Entry) {
@@ -256,15 +274,17 @@ func DrawHealthBars(ecs *ecs.ECS, screen *ebiten.Image) {
 		// Calculate health percentage
 		healthPercentage := float64(hp.Current) / float64(hp.Max)
 
-		// Apply camera translation
-		drawX := barX + float64(width)/2 - camera.Position.X
-		drawY := barY + float64(height)/2 - camera.Position.Y
+		// Apply camera translation with zoom
+		drawX := (barX-camera.Position.X)*zoom + float64(width)/2
+		drawY := (barY-camera.Position.Y)*zoom + float64(height)/2
+		barWidthScaled := barWidth * zoom
+		barHeightScaled := barHeight * zoom
 
 		// Draw the background of the health bar (red)
-		vector.DrawFilledRect(screen, float32(drawX), float32(drawY), float32(barWidth), float32(barHeight), cfg.Red, false)
+		vector.DrawFilledRect(screen, float32(drawX), float32(drawY), float32(barWidthScaled), float32(barHeightScaled), cfg.Red, false)
 
 		// Draw the foreground of the health bar (green)
-		vector.DrawFilledRect(screen, float32(drawX), float32(drawY), float32(barWidth*healthPercentage), float32(barHeight), cfg.Green, false)
+		vector.DrawFilledRect(screen, float32(drawX), float32(drawY), float32(barWidthScaled*healthPercentage), float32(barHeightScaled), cfg.Green, false)
 	})
 }
 
@@ -277,12 +297,20 @@ func DrawSprites(ecs *ecs.ECS, screen *ebiten.Image) {
 	camera := components.Camera.Get(cameraEntry)
 	width, height := screen.Bounds().Dx(), screen.Bounds().Dy()
 
-	// Culling bounds
+	// Safety check for zero zoom
+	zoom := camera.Zoom
+	if zoom == 0 {
+		zoom = 1.0
+	}
+
+	// Culling bounds (adjusted for zoom)
 	padding := 64.0
-	minX := camera.Position.X - float64(width)/2 - padding
-	maxX := camera.Position.X + float64(width)/2 + padding
-	minY := camera.Position.Y - float64(height)/2 - padding
-	maxY := camera.Position.Y + float64(height)/2 + padding
+	halfVisibleW := float64(width) / 2 / zoom
+	halfVisibleH := float64(height) / 2 / zoom
+	minX := camera.Position.X - halfVisibleW - padding
+	maxX := camera.Position.X + halfVisibleW + padding
+	minY := camera.Position.Y - halfVisibleH - padding
+	maxY := camera.Position.Y + halfVisibleH + padding
 
 	components.Sprite.Each(ecs.World, func(e *donburi.Entry) {
 		o := components.Object.Get(e)
@@ -310,8 +338,10 @@ func DrawSprites(ecs *ecs.ECS, screen *ebiten.Image) {
 		centerY := o.Y + o.H/2
 		drawOp.GeoM.Translate(centerX, centerY)
 
-		// Camera
-		drawOp.GeoM.Translate(float64(width)/2-camera.Position.X, float64(height)/2-camera.Position.Y)
+		// Camera with zoom
+		drawOp.GeoM.Translate(-camera.Position.X, -camera.Position.Y)
+		drawOp.GeoM.Scale(zoom, zoom)
+		drawOp.GeoM.Translate(float64(width)/2, float64(height)/2)
 
 		screen.DrawImage(sprite.Image, drawOp)
 	})

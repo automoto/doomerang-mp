@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"path/filepath"
+	"sort"
 
 	"github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -26,7 +27,8 @@ var (
 type PlayerSpawn struct {
 	X          float64
 	Y          float64
-	SpawnPoint string
+	SpawnPoint string // Deprecated, use SpawnIndex
+	SpawnIndex int    // 0-3, parsed from Tiled "spawnIndex" property
 }
 
 type Level struct {
@@ -223,12 +225,18 @@ func (l *LevelLoader) MustLoadLevel(levelPath string) Level {
 		case "PlayerSpawn":
 			for _, o := range og.Objects {
 				spawnPoint := o.Properties.GetString("spawnPoint")
+				spawnIndex := o.Properties.GetInt("spawnIndex")
 				level.PlayerSpawns = append(level.PlayerSpawns, PlayerSpawn{
 					X:          o.X,
 					Y:          o.Y,
 					SpawnPoint: spawnPoint,
+					SpawnIndex: spawnIndex,
 				})
 			}
+			// Sort spawns by X position (left to right) for consistent team assignment
+			sort.Slice(level.PlayerSpawns, func(i, j int) bool {
+				return level.PlayerSpawns[i].X < level.PlayerSpawns[j].X
+			})
 		case "PatrolPaths":
 			// Parse patrol paths from polyline objects
 			for _, o := range og.Objects {

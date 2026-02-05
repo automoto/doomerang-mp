@@ -14,8 +14,21 @@ func DrawLevel(ecs *ecs.ECS, screen *ebiten.Image) {
 	}
 	camera := components.Camera.Get(cameraEntry)
 	width, height := screen.Bounds().Dx(), screen.Bounds().Dy()
+
+	// Safety check for zero zoom
+	zoom := camera.Zoom
+	if zoom == 0 {
+		zoom = 1.0
+	}
+
 	opts := &ebiten.DrawImageOptions{}
-	opts.GeoM.Translate(float64(width)/2-camera.Position.X, float64(height)/2-camera.Position.Y)
+	// Apply camera transform with zoom:
+	// 1. Translate to camera-relative position
+	// 2. Scale by zoom
+	// 3. Center on screen
+	opts.GeoM.Translate(-camera.Position.X, -camera.Position.Y)
+	opts.GeoM.Scale(zoom, zoom)
+	opts.GeoM.Translate(float64(width)/2, float64(height)/2)
 
 	// Draw the level background
 	levelEntry, ok := components.Level.First(ecs.World)

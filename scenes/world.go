@@ -174,10 +174,12 @@ func (ps *PlatformerScene) configure() {
 		panic(err)
 	}
 
-	numSpawns := len(levelData.CurrentLevel.PlayerSpawns)
 	var firstPlayerSpawn assets.PlayerSpawn
 	playerIndex := 0
 	numPlayers := 0
+
+	// Track which spawns have been used for team-aware assignment
+	usedSpawns := make(map[int]bool)
 
 	// Use lobby config if available, otherwise use defaults
 	if ps.matchConfig != nil {
@@ -188,17 +190,17 @@ func (ps *PlatformerScene) configure() {
 				continue
 			}
 
-			var spawnX, spawnY float64
-			if playerIndex < numSpawns {
-				spawn := levelData.CurrentLevel.PlayerSpawns[playerIndex]
-				spawnX, spawnY = spawn.X, spawn.Y
-			} else {
-				spawn := levelData.CurrentLevel.PlayerSpawns[0]
-				spawnX = spawn.X + float64(playerIndex)*30.0
-				spawnY = spawn.Y
-			}
+			// Get spawn point based on team and game mode
+			spawn := assignSpawnPoint(
+				levelData.CurrentLevel.PlayerSpawns,
+				i,
+				slot.Team,
+				ps.matchConfig.GameMode,
+				usedSpawns,
+			)
+
 			if playerIndex == 0 {
-				firstPlayerSpawn = levelData.CurrentLevel.PlayerSpawns[0]
+				firstPlayerSpawn = spawn
 			}
 
 			if slot.Type == components.SlotHuman {
@@ -208,11 +210,21 @@ func (ps *PlatformerScene) configure() {
 					KeyboardZone:  slot.KeyboardZone,
 					ControlScheme: slot.ControlScheme,
 				}
-				player := factory2.CreatePlayer(ps.ecs, spawnX, spawnY, inputCfg)
+				player := factory2.CreatePlayer(ps.ecs, spawn.X, spawn.Y, inputCfg)
+				// Store original spawn for respawning
+				playerData := components.Player.Get(player)
+				playerData.OriginalSpawnX = spawn.X
+				playerData.OriginalSpawnY = spawn.Y
+
 				playerObj := components.Object.Get(player)
 				space.Add(playerObj.Object)
 			} else if slot.Type == components.SlotBot {
-				bot := factory2.CreateBotPlayer(ps.ecs, spawnX, spawnY, i, slot.BotDifficulty)
+				bot := factory2.CreateBotPlayer(ps.ecs, spawn.X, spawn.Y, i, slot.BotDifficulty)
+				// Store original spawn for respawning
+				botData := components.Player.Get(bot)
+				botData.OriginalSpawnX = spawn.X
+				botData.OriginalSpawnY = spawn.Y
+
 				botObj := components.Object.Get(bot)
 				space.Add(botObj.Object)
 			}
@@ -239,19 +251,24 @@ func (ps *PlatformerScene) configure() {
 
 		// Spawn human players
 		for i := 0; i < numHumans; i++ {
-			var spawnX, spawnY float64
-			if playerIndex < numSpawns {
-				spawn := levelData.CurrentLevel.PlayerSpawns[playerIndex]
-				spawnX, spawnY = spawn.X, spawn.Y
-			} else {
-				spawn := levelData.CurrentLevel.PlayerSpawns[0]
-				spawnX = spawn.X + float64(playerIndex)*30.0
-				spawnY = spawn.Y
-			}
+			// Use assignSpawnPoint for consistent behavior (FFA mode, no teams)
+			spawn := assignSpawnPoint(
+				levelData.CurrentLevel.PlayerSpawns,
+				i,
+				-1, // No team in default mode
+				cfg.GameModeFreeForAll,
+				usedSpawns,
+			)
+
 			if playerIndex == 0 {
-				firstPlayerSpawn = levelData.CurrentLevel.PlayerSpawns[0]
+				firstPlayerSpawn = spawn
 			}
-			player := factory2.CreatePlayer(ps.ecs, spawnX, spawnY, playerInputConfigs[i])
+			player := factory2.CreatePlayer(ps.ecs, spawn.X, spawn.Y, playerInputConfigs[i])
+			// Store original spawn for respawning
+			playerData := components.Player.Get(player)
+			playerData.OriginalSpawnX = spawn.X
+			playerData.OriginalSpawnY = spawn.Y
+
 			playerObj := components.Object.Get(player)
 			space.Add(playerObj.Object)
 			playerIndex++
@@ -259,16 +276,20 @@ func (ps *PlatformerScene) configure() {
 
 		// Spawn bot players
 		for _, botCfg := range botConfigs {
-			var spawnX, spawnY float64
-			if playerIndex < numSpawns {
-				spawn := levelData.CurrentLevel.PlayerSpawns[playerIndex]
-				spawnX, spawnY = spawn.X, spawn.Y
-			} else {
-				spawn := levelData.CurrentLevel.PlayerSpawns[0]
-				spawnX = spawn.X + float64(playerIndex)*30.0
-				spawnY = spawn.Y
-			}
-			bot := factory2.CreateBotPlayer(ps.ecs, spawnX, spawnY, botCfg.playerIndex, botCfg.difficulty)
+			spawn := assignSpawnPoint(
+				levelData.CurrentLevel.PlayerSpawns,
+				botCfg.playerIndex,
+				-1, // No team in default mode
+				cfg.GameModeFreeForAll,
+				usedSpawns,
+			)
+
+			bot := factory2.CreateBotPlayer(ps.ecs, spawn.X, spawn.Y, botCfg.playerIndex, botCfg.difficulty)
+			// Store original spawn for respawning
+			botData := components.Player.Get(bot)
+			botData.OriginalSpawnX = spawn.X
+			botData.OriginalSpawnY = spawn.Y
+
 			botObj := components.Object.Get(bot)
 			space.Add(botObj.Object)
 			playerIndex++
@@ -299,6 +320,47 @@ func (ps *PlatformerScene) configure() {
 
 	// Start level music
 	systems.PlayLevelMusic(ps.ecs, levelData.CurrentLevel.Name)
+}
+
+// assignSpawnPoint returns the spawn point for a given player slot based on team and game mode.
+// For 2v2 mode, Team 0 (slots 0,1) gets left spawns, Team 1 (slots 2,3) gets right spawns.
+// For other modes, spawns are assigned by slot index.
+func assignSpawnPoint(spawns []assets.PlayerSpawn, slotIndex, team int, gameMode cfg.GameModeID, usedSpawns map[int]bool) assets.PlayerSpawn {
+	numSpawns := len(spawns)
+	if numSpawns == 0 {
+		return assets.PlayerSpawn{X: 100, Y: 100} // Fallback
+	}
+
+	var spawnIndex int
+
+	if gameMode == cfg.GameMode2v2 && numSpawns >= 4 {
+		// 2v2 mode: Team 0 (slots 0,1) gets left spawns, Team 1 (slots 2,3) gets right
+		if team == 0 {
+			// Team 1: use spawn 0 or 1
+			if !usedSpawns[0] {
+				spawnIndex = 0
+			} else {
+				spawnIndex = 1
+			}
+		} else {
+			// Team 2: use spawn 2 or 3
+			if !usedSpawns[2] {
+				spawnIndex = 2
+			} else {
+				spawnIndex = 3
+			}
+		}
+	} else {
+		// FFA/1v1/Co-op: assign by slot index
+		spawnIndex = slotIndex % numSpawns
+	}
+
+	usedSpawns[spawnIndex] = true
+
+	if spawnIndex < numSpawns {
+		return spawns[spawnIndex]
+	}
+	return spawns[0]
 }
 
 // createMatchWithConfig creates the match entity and initializes match state with optional config

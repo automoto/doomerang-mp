@@ -1,6 +1,7 @@
 package systems
 
 import (
+	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/tags"
@@ -107,7 +108,8 @@ func RespawnPlayer(ecs *ecs.ECS, e *donburi.Entry) {
 	ResetMessageState(ecs)
 }
 
-// RespawnPlayerNearDeath respawns the player near their death location on safe ground.
+// RespawnPlayerNearDeath respawns the player at the best available spawn point.
+// It considers spawn points, distance from enemies, and the death location.
 func RespawnPlayerNearDeath(ecs *ecs.ECS, e *donburi.Entry) {
 	spaceEntry, ok := components.Space.First(ecs.World)
 	if !ok {
@@ -115,11 +117,27 @@ func RespawnPlayerNearDeath(ecs *ecs.ECS, e *donburi.Entry) {
 		return
 	}
 
+	levelEntry, _ := components.Level.First(ecs.World)
+	levelData := components.Level.Get(levelEntry)
+
 	player := components.Player.Get(e)
 	obj := components.Object.Get(e)
 	space := components.Space.Get(spaceEntry)
 
+	// Try to find best spawn point (farthest from enemies and death location)
+	bestSpawn := findBestRespawnPoint(ecs, e, levelData.CurrentLevel.PlayerSpawns, space)
+
+	if bestSpawn != nil {
+		resetPlayerAtPosition(e, bestSpawn.X, bestSpawn.Y)
+		ResetMessageState(ecs)
+		return
+	}
+
+	// Fallback: use last safe position or original spawn
 	spawnX, spawnY := player.LastSafeX, player.LastSafeY
+	if spawnX == 0 && spawnY == 0 {
+		spawnX, spawnY = player.OriginalSpawnX, player.OriginalSpawnY
+	}
 	if spawnX == 0 && spawnY == 0 {
 		spawnX, spawnY = obj.X, obj.Y
 	}
@@ -205,3 +223,77 @@ func findNearestSafeGround(space *resolv.Space, startX, startY, w, h float64) (x
 
 	return 0, 0, false
 }
+
+// findBestRespawnPoint finds the spawn point farthest from enemies and death location.
+// Returns nil if no safe spawn point is found.
+func findBestRespawnPoint(ecs *ecs.ECS, deadPlayer *donburi.Entry, spawns []assets.PlayerSpawn, space *resolv.Space) *assets.PlayerSpawn {
+	if len(spawns) == 0 {
+		return nil
+	}
+
+	deadObj := components.Object.Get(deadPlayer)
+	deadX, deadY := deadObj.X, deadObj.Y
+	deadPlayerData := components.Player.Get(deadPlayer)
+
+	// Collect positions of living players (excluding the dead one)
+	var livingPositions []struct{ x, y float64 }
+	tags.Player.Each(ecs.World, func(entry *donburi.Entry) {
+		if entry == deadPlayer {
+			return
+		}
+		if entry.HasComponent(components.Death) {
+			return // Skip other dead players
+		}
+		obj := components.Object.Get(entry)
+		livingPositions = append(livingPositions, struct{ x, y float64 }{obj.X, obj.Y})
+	})
+
+	const minDistFromPlayers = 150.0
+	var bestSpawn *assets.PlayerSpawn
+	bestScore := -1.0
+
+	for i := range spawns {
+		spawn := &spawns[i]
+
+		// Check if spawn is safe
+		if !isPositionSafe(space, spawn.X, spawn.Y, deadObj.W, deadObj.H) {
+			continue
+		}
+
+		// Calculate distance from death location
+		deathDist := distance(spawn.X, spawn.Y, deadX, deadY)
+
+		// Calculate minimum distance from living players
+		minPlayerDist := 9999.0
+		for _, pos := range livingPositions {
+			d := distance(spawn.X, spawn.Y, pos.x, pos.y)
+			if d < minPlayerDist {
+				minPlayerDist = d
+			}
+		}
+
+		// Skip if too close to living players
+		if minPlayerDist < minDistFromPlayers && len(livingPositions) > 0 {
+			continue
+		}
+
+		// Score: prefer far from death, far from players
+		score := deathDist + minPlayerDist
+
+		if score > bestScore {
+			bestScore = score
+			bestSpawn = spawn
+		}
+	}
+
+	// If no safe spawn found, use original spawn
+	if bestSpawn == nil && deadPlayerData.OriginalSpawnX != 0 {
+		return &assets.PlayerSpawn{
+			X: deadPlayerData.OriginalSpawnX,
+			Y: deadPlayerData.OriginalSpawnY,
+		}
+	}
+
+	return bestSpawn
+}
+

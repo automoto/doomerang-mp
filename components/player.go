@@ -14,6 +14,8 @@ type PlayerData struct {
 	ChargeVFX           *donburi.Entry // VFX shown while charging boomerang
 	LastSafeX           float64        // Last position where player was safely grounded
 	LastSafeY           float64
+	OriginalSpawnX      float64 // Spawn point assigned at match start
+	OriginalSpawnY      float64
 }
 
 var Player = donburi.NewComponentType[PlayerData]()

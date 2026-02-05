@@ -74,6 +74,30 @@ func UpdateCamera(e *ecs.ECS) {
 	screenWidth := float64(config.C.Width)
 	screenHeight := float64(config.C.Height)
 
+	// Calculate dynamic zoom to fit ALL players (2, 3, or 4)
+	var targetZoom float64 = config.Camera.MaxZoom
+	if playerCount > 1 {
+		// Bounding box already includes ALL players from the loop above
+		playerSpreadX := maxPlayerX - minPlayerX + config.Camera.ZoomMargin*2
+		playerSpreadY := maxPlayerY - minPlayerY + config.Camera.ZoomMargin*2
+
+		// Calculate zoom needed to fit ALL players (smaller value = more zoomed out)
+		zoomX := screenWidth / playerSpreadX
+		zoomY := screenHeight / playerSpreadY
+		targetZoom = math.Min(zoomX, zoomY) // Use the more restrictive axis
+
+		// Clamp zoom to configured limits
+		targetZoom = math.Max(config.Camera.MinZoom, math.Min(config.Camera.MaxZoom, targetZoom))
+	}
+
+	// Safety check for zero zoom
+	if camera.Zoom == 0 {
+		camera.Zoom = 1.0
+	}
+
+	// Smoothly interpolate zoom
+	camera.Zoom += (targetZoom - camera.Zoom) * config.Camera.ZoomSmoothing
+
 	// Calculate target position
 	var targetX, targetY float64
 
@@ -89,44 +113,40 @@ func UpdateCamera(e *ecs.ECS) {
 		targetX = centerX + camera.LookAheadX
 		targetY = centerY
 	} else {
-		// Multiplayer: use dead zone logic
+		// Multiplayer: center on the midpoint of all players
 		camera.LookAheadX *= 0.9 // Decay look-ahead
 
-		// Dead zone boundaries in world space
-		deadZoneHalfW := screenWidth * (0.5 - config.Camera.DeadZoneX)
-		deadZoneHalfH := screenHeight * (0.5 - config.Camera.DeadZoneY)
+		// When zoomed out (or zooming), center on the midpoint of all players
+		// This ensures all players stay visible without fighting with dead zone logic
+		centerX := (minPlayerX + maxPlayerX) / 2
+		centerY := (minPlayerY + maxPlayerY) / 2
 
-		deadZoneLeft := camera.Position.X - deadZoneHalfW
-		deadZoneRight := camera.Position.X + deadZoneHalfW
-		deadZoneTop := camera.Position.Y - deadZoneHalfH
-		deadZoneBottom := camera.Position.Y + deadZoneHalfH
-
-		// Start with current camera position (don't move unless needed)
-		targetX = camera.Position.X
-		targetY = camera.Position.Y
-
-		// Push camera if any player is outside dead zone
-		if minPlayerX < deadZoneLeft {
-			targetX = minPlayerX + deadZoneHalfW
-		} else if maxPlayerX > deadZoneRight {
-			targetX = maxPlayerX - deadZoneHalfW
-		}
-
-		if minPlayerY < deadZoneTop {
-			targetY = minPlayerY + deadZoneHalfH
-		} else if maxPlayerY > deadZoneBottom {
-			targetY = maxPlayerY - deadZoneHalfH
-		}
+		targetX = centerX
+		targetY = centerY
 	}
 
-	// Calculate camera bounds based on level dimensions
+	// Calculate camera bounds based on level dimensions AND zoom
 	levelWidth := float64(levelData.CurrentLevel.Width)
 	levelHeight := float64(levelData.CurrentLevel.Height)
 
-	minCameraX := screenWidth / 2
-	maxCameraX := levelWidth - screenWidth/2
-	minCameraY := screenHeight / 2
-	maxCameraY := levelHeight - screenHeight/2
+	// Visible area is larger when zoomed out
+	visibleW := screenWidth / camera.Zoom
+	visibleH := screenHeight / camera.Zoom
+
+	minCameraX := visibleW / 2
+	maxCameraX := levelWidth - visibleW/2
+	minCameraY := visibleH / 2
+	maxCameraY := levelHeight - visibleH/2
+
+	// Handle case where level is smaller than visible area
+	if minCameraX > maxCameraX {
+		minCameraX = levelWidth / 2
+		maxCameraX = levelWidth / 2
+	}
+	if minCameraY > maxCameraY {
+		minCameraY = levelHeight / 2
+		maxCameraY = levelHeight / 2
+	}
 
 	// Constrain target position to camera bounds
 	targetX = math.Max(minCameraX, math.Min(maxCameraX, targetX))

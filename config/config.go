@@ -292,6 +292,12 @@ type CameraConfig struct {
 	// Dead zone camera settings (for multiplayer)
 	DeadZoneX float64 // Fraction of screen width that triggers camera movement (each side)
 	DeadZoneY float64 // Fraction of screen height that triggers camera movement (top/bottom)
+
+	// Dynamic zoom settings (for multiplayer - keeps all players visible)
+	MinZoom       float64 // Minimum zoom level (0.5 = 2x zoom out)
+	MaxZoom       float64 // Maximum zoom level (1.0 = normal)
+	ZoomMargin    float64 // Extra margin around players in pixels
+	ZoomSmoothing float64 // How fast zoom changes (0.0-1.0)
 }
 
 // GameModeID represents different game modes
@@ -818,6 +824,10 @@ func init() {
 		LookAheadSpeedThreshold: 0.1,  // Minimum speed to update look-ahead
 		DeadZoneX:               0.3,  // Push zone is outer 30% on each side
 		DeadZoneY:               0.3,  // Push zone is outer 30% on top/bottom
+		MinZoom:                 0.5,  // Can see 2x the normal area at max zoom out
+		MaxZoom:                 1.0,  // Normal zoom (no zoom in beyond this)
+		ZoomMargin:              100.0, // 100px padding around player group
+		ZoomSmoothing:           0.05, // Smooth zoom transitions
 	}
 
 	// Match Config

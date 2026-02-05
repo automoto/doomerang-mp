@@ -8,5 +8,7 @@ import (
 
 func CreateCamera(ecs *ecs.ECS) {
 	camera := archetypes.Camera.Spawn(ecs)
-	components.Camera.Set(camera, &components.CameraData{})
+	components.Camera.Set(camera, &components.CameraData{
+		Zoom: 1.0, // Initialize to normal zoom
+	})
 }
