@@ -27,6 +27,7 @@ type LobbyUI struct {
 	// Widget references for updates
 	slotLabels      [4]*widget.Label
 	slotTypeButtons [4]*widget.Button
+	schemeButtons   [4]*widget.Button // Control scheme buttons
 	diffLabels      [4]*widget.Label
 	teamLabels      [4]*widget.Label
 	gameModeLabel   *widget.Label
@@ -202,14 +203,33 @@ func (lui *LobbyUI) buildSlotRow(slotIndex int) *widget.Container {
 	lui.slotTypeButtons[slotIndex] = typeButton
 	row.AddChild(typeButton)
 
-	// Slot label (input device) - use initial value from lobby
-	initialInputLabel := systems.GetInputDeviceName(slot)
+	// Control scheme button (for human keyboard players)
+	initialSchemeText := systems.GetInputDeviceName(slot)
+	schemeButton := widget.NewButton(
+		widget.ButtonOpts.WidgetOpts(
+			widget.WidgetOpts.MinSize(90, 20),
+		),
+		widget.ButtonOpts.Image(lui.buttonImage()),
+		widget.ButtonOpts.Text(initialSchemeText, &lui.smallFace, &widget.ButtonTextColor{
+			Idle:     color.RGBA{180, 180, 180, 255},
+			Hover:    color.RGBA{255, 255, 200, 255},
+			Pressed:  color.RGBA{200, 200, 200, 255},
+			Disabled: color.RGBA{100, 100, 100, 255},
+		}),
+		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+			systems.CycleControlScheme(lui.Lobby, idx)
+			lui.UpdateUI()
+		}),
+	)
+	lui.schemeButtons[slotIndex] = schemeButton
+	row.AddChild(schemeButton)
+
+	// Slot label (removed - now using scheme button)
 	lui.slotLabels[slotIndex] = widget.NewLabel(
-		widget.LabelOpts.Text(initialInputLabel, &lui.smallFace, &widget.LabelColor{
+		widget.LabelOpts.Text("", &lui.smallFace, &widget.LabelColor{
 			Idle: color.RGBA{180, 180, 180, 255},
 		}),
 	)
-	row.AddChild(lui.slotLabels[slotIndex])
 
 	// Difficulty label (for bots)
 	initialDiffLabel := ""
@@ -424,9 +444,14 @@ func (lui *LobbyUI) UpdateUI() {
 			}
 		}
 
-		// Update slot info label
-		if lui.slotLabels[i] != nil {
-			lui.slotLabels[i].Label = systems.GetInputDeviceName(slot)
+		// Update scheme button
+		if lui.schemeButtons[i] != nil {
+			if textWidget := lui.schemeButtons[i].Text(); textWidget != nil {
+				textWidget.Label = systems.GetInputDeviceName(slot)
+			}
+			// Only enable scheme button for human keyboard players
+			canCycleScheme := slot.Type == components.SlotHuman && slot.GamepadID == nil
+			lui.schemeButtons[i].GetWidget().Disabled = !canCycleScheme
 		}
 
 		// Update difficulty label (only for bots)

@@ -43,12 +43,13 @@ var Input = donburi.NewComponentType[InputData]()
 // PlayerInputData stores per-player input state.
 // Each player entity has their own PlayerInputData with a bound input device.
 type PlayerInputData struct {
-	PlayerIndex    int                    // 0-3 player index
-	CurrentInput   [cfg.ActionCount]bool  // Current frame's Pressed state
-	PreviousInput  [cfg.ActionCount]bool  // Previous frame's Pressed state
-	BoundGamepadID *ebiten.GamepadID      // Bound gamepad (nil = keyboard)
-	KeyboardZone   int                    // KeyboardZoneWASD, KeyboardZoneArrows, or KeyboardZoneNone
-	InputMethod    InputMethod            // Current input method (for UI prompts)
+	PlayerIndex    int                   // 0-3 player index
+	CurrentInput   [cfg.ActionCount]bool // Current frame's Pressed state
+	PreviousInput  [cfg.ActionCount]bool // Previous frame's Pressed state
+	BoundGamepadID *ebiten.GamepadID     // Bound gamepad (nil = keyboard)
+	KeyboardZone   int                   // DEPRECATED: use ControlScheme instead
+	ControlScheme  cfg.ControlSchemeID   // Active control scheme (A=Arrows+Numpad, B=WASD+Space)
+	InputMethod    InputMethod           // Current input method (for UI prompts)
 }
 
 var PlayerInput = donburi.NewComponentType[PlayerInputData]()

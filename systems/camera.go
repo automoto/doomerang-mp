@@ -27,21 +27,43 @@ func UpdateCamera(e *ecs.ECS) {
 		return
 	}
 
-	// Gather all player positions
+	// Gather all player positions and track bounding box
 	var sumX, sumY float64
 	var playerCount int
+	var minPlayerX, maxPlayerX, minPlayerY, maxPlayerY float64
 	var singlePlayerPhysics *components.PhysicsData
 	var singlePlayerData *components.PlayerData
+	first := true
 
 	tags.Player.Each(e.World, func(playerEntry *donburi.Entry) {
 		playerObject := components.Object.Get(playerEntry)
-		sumX += playerObject.X + playerObject.W/2
-		sumY += playerObject.Y + playerObject.H/2
+		px := playerObject.X + playerObject.W/2
+		py := playerObject.Y + playerObject.H/2
+
+		sumX += px
+		sumY += py
 		playerCount++
-		// Keep reference to first player for look-ahead (only used in single-player mode)
-		if playerCount == 1 {
+
+		// Track bounding box of all players
+		if first {
+			minPlayerX, maxPlayerX = px, px
+			minPlayerY, maxPlayerY = py, py
+			first = false
 			singlePlayerPhysics = components.Physics.Get(playerEntry)
 			singlePlayerData = components.Player.Get(playerEntry)
+		} else {
+			if px < minPlayerX {
+				minPlayerX = px
+			}
+			if px > maxPlayerX {
+				maxPlayerX = px
+			}
+			if py < minPlayerY {
+				minPlayerY = py
+			}
+			if py > maxPlayerY {
+				maxPlayerY = py
+			}
 		}
 	})
 
@@ -49,39 +71,68 @@ func UpdateCamera(e *ecs.ECS) {
 		return // no players (could be dead), skip camera update
 	}
 
-	// Calculate center point of all players
-	centerX := sumX / float64(playerCount)
-	centerY := sumY / float64(playerCount)
+	screenWidth := float64(config.C.Width)
+	screenHeight := float64(config.C.Height)
 
-	// Only apply look-ahead in single-player mode
+	// Calculate target position
+	var targetX, targetY float64
+
 	if playerCount == 1 && singlePlayerPhysics != nil && singlePlayerData != nil {
+		// Single player: use existing look-ahead logic
+		centerX := sumX / float64(playerCount)
+		centerY := sumY / float64(playerCount)
+
 		if math.Abs(singlePlayerPhysics.SpeedX) > config.Camera.LookAheadSpeedThreshold {
 			targetLookAhead := singlePlayerData.Direction.X * config.Camera.LookAheadDistanceX * config.Camera.LookAheadMovingScale
 			camera.LookAheadX += (targetLookAhead - camera.LookAheadX) * config.Camera.LookAheadSmoothing
 		}
-		centerX += camera.LookAheadX
+		targetX = centerX + camera.LookAheadX
+		targetY = centerY
 	} else {
-		// Decay look-ahead in multiplayer mode
-		camera.LookAheadX *= 0.9
+		// Multiplayer: use dead zone logic
+		camera.LookAheadX *= 0.9 // Decay look-ahead
+
+		// Dead zone boundaries in world space
+		deadZoneHalfW := screenWidth * (0.5 - config.Camera.DeadZoneX)
+		deadZoneHalfH := screenHeight * (0.5 - config.Camera.DeadZoneY)
+
+		deadZoneLeft := camera.Position.X - deadZoneHalfW
+		deadZoneRight := camera.Position.X + deadZoneHalfW
+		deadZoneTop := camera.Position.Y - deadZoneHalfH
+		deadZoneBottom := camera.Position.Y + deadZoneHalfH
+
+		// Start with current camera position (don't move unless needed)
+		targetX = camera.Position.X
+		targetY = camera.Position.Y
+
+		// Push camera if any player is outside dead zone
+		if minPlayerX < deadZoneLeft {
+			targetX = minPlayerX + deadZoneHalfW
+		} else if maxPlayerX > deadZoneRight {
+			targetX = maxPlayerX - deadZoneHalfW
+		}
+
+		if minPlayerY < deadZoneTop {
+			targetY = minPlayerY + deadZoneHalfH
+		} else if maxPlayerY > deadZoneBottom {
+			targetY = maxPlayerY - deadZoneHalfH
+		}
 	}
 
-	// Calculate camera bounds based on screen and level dimensions
-	screenWidth := float64(config.C.Width)
-	screenHeight := float64(config.C.Height)
+	// Calculate camera bounds based on level dimensions
 	levelWidth := float64(levelData.CurrentLevel.Width)
 	levelHeight := float64(levelData.CurrentLevel.Height)
 
-	// Camera bounds: ensure the level always fills the screen
 	minCameraX := screenWidth / 2
 	maxCameraX := levelWidth - screenWidth/2
 	minCameraY := screenHeight / 2
 	maxCameraY := levelHeight - screenHeight/2
 
 	// Constrain target position to camera bounds
-	targetX := math.Max(minCameraX, math.Min(maxCameraX, centerX))
-	targetY := math.Max(minCameraY, math.Min(maxCameraY, centerY))
+	targetX = math.Max(minCameraX, math.Min(maxCameraX, targetX))
+	targetY = math.Max(minCameraY, math.Min(maxCameraY, targetY))
 
-	// Center the camera on the constrained target position, with some smoothing.
+	// Apply smoothing
 	camera.Position.X += (targetX - camera.Position.X) * config.Camera.FollowSmoothing
 	camera.Position.Y += (targetY - camera.Position.Y) * config.Camera.FollowSmoothing
 }

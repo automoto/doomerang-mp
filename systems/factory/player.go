@@ -13,9 +13,10 @@ import (
 
 // PlayerInputConfig defines how a player receives input.
 type PlayerInputConfig struct {
-	PlayerIndex  int                   // 0-3 player index
-	GamepadID    *ebiten.GamepadID     // Bound gamepad (nil = keyboard)
-	KeyboardZone int                   // KeyboardZoneWASD, KeyboardZoneArrows, or KeyboardZoneNone
+	PlayerIndex   int                   // 0-3 player index
+	GamepadID     *ebiten.GamepadID     // Bound gamepad (nil = keyboard)
+	KeyboardZone  int                   // DEPRECATED: use ControlScheme instead
+	ControlScheme cfg.ControlSchemeID   // Active control scheme (A=Arrows+Numpad, B=WASD+Space)
 }
 
 // CreatePlayer creates a player entity with the given input configuration.
@@ -36,6 +37,7 @@ func CreatePlayer(ecs *ecs.ECS, x, y float64, inputCfg PlayerInputConfig) *donbu
 		PlayerIndex:    inputCfg.PlayerIndex,
 		BoundGamepadID: inputCfg.GamepadID,
 		KeyboardZone:   inputCfg.KeyboardZone,
+		ControlScheme:  inputCfg.ControlScheme,
 		InputMethod:    getDefaultInputMethod(inputCfg),
 	})
 	components.State.SetValue(player, components.StateData{

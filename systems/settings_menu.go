@@ -342,16 +342,35 @@ func drawControlsScreen(e *ecs.ECS, screen *ebiten.Image, width, height float64)
 	// Get control mappings based on input method
 	mappings := getControlMappings(input.LastInputMethod)
 
-	// Calculate layout
-	startY := 70.0
+	// Calculate layout - use smaller line height for keyboard to fit both schemes
 	lineHeight := 22.0
+	if input.LastInputMethod == components.InputKeyboard {
+		lineHeight = 18.0
+	}
+	startY := 60.0
 	labelX := int(width/2) - 100
 	valueX := int(width/2) + 20
 
 	for i, mapping := range mappings {
 		y := startY + float64(i)*lineHeight
-		text.Draw(screen, mapping.Action, fontFace, labelX, int(y), cfg.Pause.TextColorNormal)
-		text.Draw(screen, mapping.Button, fontFace, valueX, int(y), cfg.Pause.TextColorSelected)
+
+		// Skip empty rows but maintain spacing
+		if mapping.Action == "" && mapping.Button == "" {
+			continue
+		}
+
+		// Section headers (start with ---)
+		if len(mapping.Action) > 3 && mapping.Action[:3] == "---" {
+			// Draw header centered and highlighted
+			headerText := mapping.Action
+			headerX := int(width/2) - 80
+			text.Draw(screen, headerText, fontFace, headerX, int(y), cfg.Menu.TitleColor)
+			// Draw scheme name
+			text.Draw(screen, mapping.Button, fontFace, int(width/2)+30, int(y), cfg.Pause.TextColorSelected)
+		} else {
+			text.Draw(screen, mapping.Action, fontFace, labelX, int(y), cfg.Pause.TextColorNormal)
+			text.Draw(screen, mapping.Button, fontFace, valueX, int(y), cfg.Pause.TextColorSelected)
+		}
 	}
 
 	// Draw hint at bottom
@@ -372,36 +391,35 @@ func getControlMappings(method components.InputMethod) []controlMapping {
 	switch method {
 	case components.InputPlayStation:
 		return []controlMapping{
-			{"Move", "Left Stick / D-Pad"},
+			{"Move/Aim", "Left Stick / D-Pad"},
 			{"Jump", "Cross"},
-			{"Attack", "Square"},
-			{"Boomerang", "Circle"},
-			{"Aim Throw", "Hold direction"},
-			{"Slide", "Run + Down"},
-			{"Wall Slide", "Hold toward wall"},
+			{"Strike", "Circle"},
+			{"Boomerang", "Square"},
+			{"Crouch", "D-Pad Down"},
 			{"Pause", "Options"},
 		}
 	case components.InputXbox:
 		return []controlMapping{
-			{"Move", "Left Stick / D-Pad"},
+			{"Move/Aim", "Left Stick / D-Pad"},
 			{"Jump", "A"},
-			{"Attack", "X"},
-			{"Boomerang", "B"},
-			{"Aim Throw", "Hold direction"},
-			{"Slide", "Run + Down"},
-			{"Wall Slide", "Hold toward wall"},
+			{"Strike", "B"},
+			{"Boomerang", "X"},
+			{"Crouch", "D-Pad Down"},
 			{"Pause", "Start"},
 		}
-	default: // Keyboard
+	default: // Keyboard - show both schemes
 		return []controlMapping{
-			{"Move", "Arrow Keys / WASD"},
-			{"Jump", "X / W"},
-			{"Attack", "Z"},
-			{"Boomerang", "Space"},
-			{"Aim Throw", "Hold direction"},
-			{"Slide", "Run + Down"},
-			{"Wall Slide", "Hold toward wall"},
-			{"Pause", "Esc / P"},
+			{"--- SCHEME A ---", "Arrows+Numbers"},
+			{"Move/Aim", "Arrow Keys"},
+			{"Jump", "0"},
+			{"Strike", "8"},
+			{"Boomerang", "9"},
+			{"", ""},
+			{"--- SCHEME B ---", "WASD+Space"},
+			{"Move/Aim", "WASD"},
+			{"Jump", "Space"},
+			{"Strike", "F"},
+			{"Boomerang", "G"},
 		}
 	}
 }

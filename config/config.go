@@ -288,6 +288,10 @@ type CameraConfig struct {
 	LookAheadSmoothing      float64 // How fast look-ahead offset changes (0.0-1.0)
 	LookAheadMovingScale    float64 // Scale when player is moving (1.0)
 	LookAheadSpeedThreshold float64 // Minimum speed to update look-ahead
+
+	// Dead zone camera settings (for multiplayer)
+	DeadZoneX float64 // Fraction of screen width that triggers camera movement (each side)
+	DeadZoneY float64 // Fraction of screen height that triggers camera movement (top/bottom)
 }
 
 // GameModeID represents different game modes
@@ -811,7 +815,9 @@ func init() {
 		LookAheadDistanceX:      60.0, // ~10% of 640px screen width
 		LookAheadSmoothing:      0.05, // Slower than follow for smooth feel
 		LookAheadMovingScale:    1.0,
-		LookAheadSpeedThreshold: 0.1, // Minimum speed to update look-ahead
+		LookAheadSpeedThreshold: 0.1,  // Minimum speed to update look-ahead
+		DeadZoneX:               0.3,  // Push zone is outer 30% on each side
+		DeadZoneY:               0.3,  // Push zone is outer 30% on top/bottom
 	}
 
 	// Match Config

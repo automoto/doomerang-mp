@@ -39,7 +39,7 @@ func updateSinglePlayer(ecs *ecs.ECS, playerEntry *donburi.Entry) {
 	animData := components.Animation.Get(playerEntry)
 	playerObject := components.Object.Get(playerEntry).Object
 
-	handlePlayerInput(ecs, input, player, physics, melee, state, playerObject)
+	handlePlayerInput(ecs, playerEntry, input, player, physics, melee, state, playerObject)
 	updatePlayerState(ecs, input, playerEntry, player, physics, melee, state, animData)
 
 	// Decrement invulnerability timer
@@ -48,7 +48,7 @@ func updateSinglePlayer(ecs *ecs.ECS, playerEntry *donburi.Entry) {
 	}
 }
 
-func handlePlayerInput(e *ecs.ECS, input *components.PlayerInputData, player *components.PlayerData, physics *components.PhysicsData, melee *components.MeleeAttackData, state *components.StateData, playerObject *resolv.Object) {
+func handlePlayerInput(e *ecs.ECS, playerEntry *donburi.Entry, input *components.PlayerInputData, player *components.PlayerData, physics *components.PhysicsData, melee *components.MeleeAttackData, state *components.StateData, playerObject *resolv.Object) {
 	// Get action states from player input component
 	attackAction := GetPlayerAction(input, cfg.ActionAttack)
 	jumpAction := GetPlayerAction(input, cfg.ActionJump)
@@ -61,7 +61,7 @@ func handlePlayerInput(e *ecs.ECS, input *components.PlayerInputData, player *co
 		handleMeleeInput(attackAction, physics, melee, state, player, playerObject)
 
 		if !isInAttackState(state.CurrentState) {
-			handleJumpInput(e, jumpAction, crouchAction, physics, playerObject)
+			handleJumpInput(e, playerEntry, jumpAction, crouchAction, physics, playerObject)
 		}
 	}
 
@@ -104,7 +104,7 @@ func handleMeleeInput(attackAction components.ActionState, physics *components.P
 	}
 }
 
-func handleJumpInput(e *ecs.ECS, jumpAction, crouchAction components.ActionState, physics *components.PhysicsData, playerObject *resolv.Object) {
+func handleJumpInput(e *ecs.ECS, playerEntry *donburi.Entry, jumpAction, crouchAction components.ActionState, physics *components.PhysicsData, playerObject *resolv.Object) {
 	if !jumpAction.JustPressed {
 		return
 	}
@@ -121,9 +121,7 @@ func handleJumpInput(e *ecs.ECS, jumpAction, crouchAction components.ActionState
 		PlaySFX(e, cfg.SoundJump)
 		// Spawn jump dust and squash/stretch
 		factory.SpawnJumpDust(e, playerObject.X+playerObject.W/2, playerObject.Y+playerObject.H)
-		if playerEntry, ok := components.Player.First(e.World); ok {
-			TriggerSquashStretch(playerEntry, cfg.SquashStretch.JumpScaleX, cfg.SquashStretch.JumpScaleY)
-		}
+		TriggerSquashStretch(playerEntry, cfg.SquashStretch.JumpScaleX, cfg.SquashStretch.JumpScaleY)
 		return
 	}
 

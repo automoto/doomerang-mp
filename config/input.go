@@ -24,6 +24,21 @@ const (
 	ActionCount // Must be last - used for array sizing
 )
 
+// ControlSchemeID identifies a control scheme preset
+type ControlSchemeID int
+
+const (
+	ControlSchemeA ControlSchemeID = iota // Arrows + Numpad
+	ControlSchemeB                        // WASD + Space
+	ControlSchemeCount
+)
+
+// ControlSchemeNames for UI display
+var ControlSchemeNames = [ControlSchemeCount]string{
+	"Arrows+Numbers",
+	"WASD+Space",
+}
+
 // InputBinding represents a single key or button binding for an action
 type InputBinding struct {
 	Keys                   []ebiten.Key
@@ -40,16 +55,32 @@ type InputConfig struct {
 // Input is the global input configuration
 var Input InputConfig
 
-// KeyboardZoneBindings maps ActionID to keys for each keyboard zone.
-// Zone 0 (WASD area) is for players using the left side of the keyboard.
-// Zone 1 (Arrows area) is for players using the right side of the keyboard.
-var KeyboardZoneBindings = [2]map[ActionID][]ebiten.Key{
-	// Zone 0: WASD area (Player 1 or Player 3)
+// ControlSchemeBindings maps ActionID to keys for each control scheme.
+// These replace the old "keyboard zones" concept with dedicated jump buttons.
+var ControlSchemeBindings = [ControlSchemeCount]map[ActionID][]ebiten.Key{
+	// Scheme A: Arrows + Number Keys
+	{
+		ActionMoveLeft:   {ebiten.KeyLeft},
+		ActionMoveRight:  {ebiten.KeyRight},
+		ActionMoveUp:     {ebiten.KeyUp},      // For aiming up
+		ActionJump:       {ebiten.KeyDigit0},  // Dedicated jump button
+		ActionAttack:     {ebiten.KeyDigit8},
+		ActionCrouch:     {ebiten.KeyDown},
+		ActionBoomerang:  {ebiten.KeyDigit9},
+		ActionPause:      {ebiten.KeyEscape},
+		ActionMenuUp:     {ebiten.KeyUp},
+		ActionMenuDown:   {ebiten.KeyDown},
+		ActionMenuLeft:   {ebiten.KeyLeft},
+		ActionMenuRight:  {ebiten.KeyRight},
+		ActionMenuSelect: {ebiten.KeyEnter, ebiten.KeyDigit0},
+		ActionMenuBack:   {ebiten.KeyBackspace},
+	},
+	// Scheme B: WASD + Space/F/G
 	{
 		ActionMoveLeft:   {ebiten.KeyA},
 		ActionMoveRight:  {ebiten.KeyD},
-		ActionMoveUp:     {ebiten.KeyW},
-		ActionJump:       {ebiten.KeyW},
+		ActionMoveUp:     {ebiten.KeyW},      // For aiming up
+		ActionJump:       {ebiten.KeySpace},  // Dedicated jump button
 		ActionAttack:     {ebiten.KeyF},
 		ActionCrouch:     {ebiten.KeyS},
 		ActionBoomerang:  {ebiten.KeyG},
@@ -61,23 +92,14 @@ var KeyboardZoneBindings = [2]map[ActionID][]ebiten.Key{
 		ActionMenuSelect: {ebiten.KeySpace},
 		ActionMenuBack:   {ebiten.KeyTab},
 	},
-	// Zone 1: Arrow area (Player 2 or Player 4)
-	{
-		ActionMoveLeft:   {ebiten.KeyLeft},
-		ActionMoveRight:  {ebiten.KeyRight},
-		ActionMoveUp:     {ebiten.KeyUp},
-		ActionJump:       {ebiten.KeyUp},
-		ActionAttack:     {ebiten.KeyNumpad1, ebiten.KeyPeriod},
-		ActionCrouch:     {ebiten.KeyDown},
-		ActionBoomerang:  {ebiten.KeyNumpad2, ebiten.KeySlash},
-		ActionPause:      {ebiten.KeyEscape},
-		ActionMenuUp:     {ebiten.KeyUp},
-		ActionMenuDown:   {ebiten.KeyDown},
-		ActionMenuLeft:   {ebiten.KeyLeft},
-		ActionMenuRight:  {ebiten.KeyRight},
-		ActionMenuSelect: {ebiten.KeyEnter},
-		ActionMenuBack:   {ebiten.KeyBackspace},
-	},
+}
+
+// KeyboardZoneBindings is kept for backwards compatibility but maps to schemes.
+// Zone 0 -> Scheme B (WASD), Zone 1 -> Scheme A (Arrows)
+// This maintains existing behavior for code that uses zones.
+var KeyboardZoneBindings = [2]map[ActionID][]ebiten.Key{
+	ControlSchemeBindings[ControlSchemeB], // Zone 0 = WASD = Scheme B
+	ControlSchemeBindings[ControlSchemeA], // Zone 1 = Arrows = Scheme A
 }
 
 func init() {
@@ -99,24 +121,24 @@ func init() {
 				},
 			},
 			ActionMoveUp: {
-				Keys: []ebiten.Key{ebiten.KeyUp},
+				Keys: []ebiten.Key{ebiten.KeyUp, ebiten.KeyW},
 				// D-pad Up (analog stick handled separately)
 				StandardGamepadButtons: []ebiten.StandardGamepadButton{
 					ebiten.StandardGamepadButtonLeftTop,
 				},
 			},
 			ActionJump: {
-				Keys: []ebiten.Key{ebiten.KeyX, ebiten.KeyW},
+				Keys: []ebiten.Key{ebiten.KeyDigit0, ebiten.KeySpace},
 				// A / Cross button
 				StandardGamepadButtons: []ebiten.StandardGamepadButton{
 					ebiten.StandardGamepadButtonRightBottom,
 				},
 			},
 			ActionAttack: {
-				Keys: []ebiten.Key{ebiten.KeyZ},
-				// X / Square button
+				Keys: []ebiten.Key{ebiten.KeyDigit8, ebiten.KeyF},
+				// B / Circle button
 				StandardGamepadButtons: []ebiten.StandardGamepadButton{
-					ebiten.StandardGamepadButtonRightLeft,
+					ebiten.StandardGamepadButtonRightRight,
 				},
 			},
 			ActionCrouch: {
@@ -127,10 +149,10 @@ func init() {
 				},
 			},
 			ActionBoomerang: {
-				Keys: []ebiten.Key{ebiten.KeySpace},
-				// B / Circle button
+				Keys: []ebiten.Key{ebiten.KeyDigit9, ebiten.KeyG},
+				// X / Square button
 				StandardGamepadButtons: []ebiten.StandardGamepadButton{
-					ebiten.StandardGamepadButtonRightRight,
+					ebiten.StandardGamepadButtonRightLeft,
 				},
 			},
 			ActionPause: {
@@ -169,7 +191,7 @@ func init() {
 				},
 			},
 			ActionMenuSelect: {
-				Keys: []ebiten.Key{ebiten.KeyEnter},
+				Keys: []ebiten.Key{ebiten.KeyEnter, ebiten.KeyDigit0, ebiten.KeySpace},
 				// A / Cross button
 				StandardGamepadButtons: []ebiten.StandardGamepadButton{
 					ebiten.StandardGamepadButtonRightBottom,

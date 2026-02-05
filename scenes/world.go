@@ -203,9 +203,10 @@ func (ps *PlatformerScene) configure() {
 
 			if slot.Type == components.SlotHuman {
 				inputCfg := factory2.PlayerInputConfig{
-					PlayerIndex:  i,
-					GamepadID:    slot.GamepadID,
-					KeyboardZone: slot.KeyboardZone,
+					PlayerIndex:   i,
+					GamepadID:     slot.GamepadID,
+					KeyboardZone:  slot.KeyboardZone,
+					ControlScheme: slot.ControlScheme,
 				}
 				player := factory2.CreatePlayer(ps.ecs, spawnX, spawnY, inputCfg)
 				playerObj := components.Object.Get(player)
@@ -221,8 +222,8 @@ func (ps *PlatformerScene) configure() {
 	} else {
 		// Default configuration (for backwards compatibility)
 		playerInputConfigs := []factory2.PlayerInputConfig{
-			{PlayerIndex: 0, GamepadID: nil, KeyboardZone: components.KeyboardZoneWASD},
-			{PlayerIndex: 1, GamepadID: nil, KeyboardZone: components.KeyboardZoneArrows},
+			{PlayerIndex: 0, GamepadID: nil, KeyboardZone: components.KeyboardZoneArrows, ControlScheme: cfg.ControlSchemeA},
+			{PlayerIndex: 1, GamepadID: nil, KeyboardZone: components.KeyboardZoneWASD, ControlScheme: cfg.ControlSchemeB},
 		}
 
 		botConfigs := []struct {

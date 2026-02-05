@@ -8,22 +8,24 @@ import (
 
 // InitLobby initializes a lobby with default settings
 func InitLobby(lobby *components.LobbyData) {
-	// Slot 0: Human with WASD
+	// Slot 0: Human with Scheme A (Arrows + Numpad)
 	lobby.Slots[0] = components.PlayerSlot{
-		Type:         components.SlotHuman,
-		GamepadID:    nil,
-		KeyboardZone: components.KeyboardZoneWASD,
-		Team:         -1,
-		Ready:        false,
+		Type:          components.SlotHuman,
+		GamepadID:     nil,
+		KeyboardZone:  components.KeyboardZoneArrows, // Kept for backwards compat
+		ControlScheme: cfg.ControlSchemeA,
+		Team:          -1,
+		Ready:         false,
 	}
 
-	// Slot 1: Human with Arrows
+	// Slot 1: Human with Scheme B (WASD + Space)
 	lobby.Slots[1] = components.PlayerSlot{
-		Type:         components.SlotHuman,
-		GamepadID:    nil,
-		KeyboardZone: components.KeyboardZoneArrows,
-		Team:         -1,
-		Ready:        false,
+		Type:          components.SlotHuman,
+		GamepadID:     nil,
+		KeyboardZone:  components.KeyboardZoneWASD, // Kept for backwards compat
+		ControlScheme: cfg.ControlSchemeB,
+		Team:          -1,
+		Ready:         false,
 	}
 
 	// Slots 2-3: Empty by default
@@ -186,32 +188,54 @@ func CycleBotDifficulty(lobby *components.LobbyData, slotIndex int) {
 	slot.BotDifficulty = (slot.BotDifficulty + 1) % 3
 }
 
+// CycleControlScheme cycles the control scheme for a human slot
+func CycleControlScheme(lobby *components.LobbyData, slotIndex int) {
+	if slotIndex < 0 || slotIndex >= 4 {
+		return
+	}
+	slot := &lobby.Slots[slotIndex]
+	if slot.Type != components.SlotHuman || slot.GamepadID != nil {
+		return
+	}
+	slot.ControlScheme = (slot.ControlScheme + 1) % cfg.ControlSchemeCount
+	// Update KeyboardZone for backwards compat
+	if slot.ControlScheme == cfg.ControlSchemeA {
+		slot.KeyboardZone = components.KeyboardZoneArrows
+	} else {
+		slot.KeyboardZone = components.KeyboardZoneWASD
+	}
+}
+
 // assignInputDevice assigns an available input device to a slot
 func assignInputDevice(lobby *components.LobbyData, slotIndex int) {
 	slot := &lobby.Slots[slotIndex]
 
-	// Check keyboard zones first
-	wasdUsed, arrowsUsed := false, false
+	// Check which control schemes are in use
+	schemeAUsed, schemeBUsed := false, false
 	for i, s := range lobby.Slots {
 		if i == slotIndex || s.Type != components.SlotHuman {
 			continue
 		}
-		if s.KeyboardZone == components.KeyboardZoneWASD {
-			wasdUsed = true
-		}
-		if s.KeyboardZone == components.KeyboardZoneArrows {
-			arrowsUsed = true
+		if s.GamepadID == nil { // Only keyboard players use control schemes
+			if s.ControlScheme == cfg.ControlSchemeA {
+				schemeAUsed = true
+			}
+			if s.ControlScheme == cfg.ControlSchemeB {
+				schemeBUsed = true
+			}
 		}
 	}
 
-	// Assign keyboard zone if available
-	if !wasdUsed {
-		slot.KeyboardZone = components.KeyboardZoneWASD
+	// Assign control scheme if available (prefer Scheme A first)
+	if !schemeAUsed {
+		slot.ControlScheme = cfg.ControlSchemeA
+		slot.KeyboardZone = components.KeyboardZoneArrows // For backwards compat
 		slot.GamepadID = nil
 		return
 	}
-	if !arrowsUsed {
-		slot.KeyboardZone = components.KeyboardZoneArrows
+	if !schemeBUsed {
+		slot.ControlScheme = cfg.ControlSchemeB
+		slot.KeyboardZone = components.KeyboardZoneWASD // For backwards compat
 		slot.GamepadID = nil
 		return
 	}
@@ -314,14 +338,11 @@ func GetInputDeviceName(slot *components.PlayerSlot) string {
 	if slot.GamepadID != nil {
 		return "Gamepad"
 	}
-	switch slot.KeyboardZone {
-	case components.KeyboardZoneWASD:
-		return "WASD"
-	case components.KeyboardZoneArrows:
-		return "Arrows"
-	default:
-		return "None"
+	// Show control scheme name
+	if int(slot.ControlScheme) < len(cfg.ControlSchemeNames) {
+		return cfg.ControlSchemeNames[slot.ControlScheme]
 	}
+	return "None"
 }
 
 // GetTeamName returns a display name for team

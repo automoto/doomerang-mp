@@ -17,12 +17,13 @@ const (
 
 // PlayerSlot represents a player slot in the lobby
 type PlayerSlot struct {
-	Type          PlayerSlotType    // Empty, Human, or Bot
-	GamepadID     *ebiten.GamepadID // Assigned gamepad (nil = keyboard)
-	KeyboardZone  int               // Keyboard zone (0=WASD, 1=Arrows, -1=none)
-	BotDifficulty cfg.BotDifficulty // Difficulty if bot
-	Team          int               // Team index (-1 = no team/FFA)
-	Ready         bool              // Player is ready to start
+	Type          PlayerSlotType      // Empty, Human, or Bot
+	GamepadID     *ebiten.GamepadID   // Assigned gamepad (nil = keyboard)
+	KeyboardZone  int                 // Keyboard zone (0=WASD, 1=Arrows, -1=none) - DEPRECATED: use ControlScheme
+	ControlScheme cfg.ControlSchemeID // Control scheme (A=Arrows+Numpad, B=WASD+Space)
+	BotDifficulty cfg.BotDifficulty   // Difficulty if bot
+	Team          int                 // Team index (-1 = no team/FFA)
+	Ready         bool                // Player is ready to start
 }
 
 // LobbyData stores the lobby/match configuration state

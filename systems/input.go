@@ -195,8 +195,9 @@ func updatePlayerInputData(input *components.PlayerInputData, gamepads []ebiten.
 		return
 	}
 
-	if input.KeyboardZone >= 0 && input.KeyboardZone < len(cfg.KeyboardZoneBindings) {
-		pollKeyboardZoneForPlayer(input, input.KeyboardZone)
+	// Use ControlScheme for keyboard input
+	if input.ControlScheme >= 0 && int(input.ControlScheme) < len(cfg.ControlSchemeBindings) {
+		pollControlSchemeForPlayer(input, input.ControlScheme)
 	}
 }
 
@@ -241,12 +242,12 @@ func pollGamepadForPlayer(input *components.PlayerInputData, gpID ebiten.Gamepad
 	}
 }
 
-// pollKeyboardZoneForPlayer reads input from a keyboard zone into PlayerInputData.
-func pollKeyboardZoneForPlayer(input *components.PlayerInputData, zone int) {
-	zoneBindings := cfg.KeyboardZoneBindings[zone]
+// pollControlSchemeForPlayer reads input from a control scheme into PlayerInputData.
+func pollControlSchemeForPlayer(input *components.PlayerInputData, scheme cfg.ControlSchemeID) {
+	schemeBindings := cfg.ControlSchemeBindings[scheme]
 	keyPressed := false
 
-	for actionID, keys := range zoneBindings {
+	for actionID, keys := range schemeBindings {
 		for _, key := range keys {
 			if ebiten.IsKeyPressed(key) {
 				input.CurrentInput[actionID] = true
