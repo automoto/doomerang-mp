@@ -43,7 +43,7 @@ func UpdateBoomerang(ecs *ecs.ECS) {
 }
 
 func updateOutbound(e *donburi.Entry, b *components.BoomerangData, physics *components.PhysicsData, obj *components.ObjectData) {
-	// Track distance - we still need sqrt here for accurate range tracking 
+	// Track distance - we still need sqrt here for accurate range tracking
 	// because speed varies, but we could optimize this if needed.
 	speed := math.Sqrt(physics.SpeedX*physics.SpeedX + physics.SpeedY*physics.SpeedY)
 	b.DistanceTraveled += speed
@@ -88,7 +88,7 @@ func updateInbound(ecs *ecs.ECS, e *donburi.Entry, b *components.BoomerangData, 
 		physics.SpeedX = dirX * returnSpeed
 		physics.SpeedY = dirY * returnSpeed
 	} else {
-		// Stop moving if we are exactly at the player center 
+		// Stop moving if we are exactly at the player center
 		// (collision check will catch it)
 		physics.SpeedX = 0
 		physics.SpeedY = 0

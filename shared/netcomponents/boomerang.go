@@ -4,8 +4,8 @@ import "github.com/yohamta/donburi"
 
 type NetBoomerangData struct {
 	X, Y             float64
-	OwnerNetworkID   uint    // NetworkId of owning player
-	State            int     // Flying, Returning, etc.
+	OwnerNetworkID   uint // NetworkId of owning player
+	State            int  // Flying, Returning, etc.
 	DistanceTraveled float64
 }
 

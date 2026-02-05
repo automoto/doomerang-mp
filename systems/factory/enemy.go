@@ -90,7 +90,7 @@ func CreateEnemy(ecs *ecs.ECS, x, y float64, patrolPath string, enemyTypeName st
 	// Initialize Flash component (permanently attached to avoid archetype thrashing)
 	components.Flash.SetValue(enemy, components.FlashData{
 		Duration: 0,
-		R: 1, G: 1, B: 1,
+		R:        1, G: 1, B: 1,
 	})
 
 	return enemy

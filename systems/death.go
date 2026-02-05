@@ -296,4 +296,3 @@ func findBestRespawnPoint(ecs *ecs.ECS, deadPlayer *donburi.Entry, spawns []asse
 
 	return bestSpawn
 }
-

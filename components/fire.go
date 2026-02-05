@@ -6,18 +6,18 @@ import (
 )
 
 type FireData struct {
-	FireType       string  // "fire_pulsing" or "fire_continuous"
-	Active         bool    // Currently dangerous?
-	Damage         int     // Cached from config
-	KnockbackForce float64 // Cached from config
-	Direction      string  // "up", "down", "left", "right"
-	BaseWidth      float64 // Full-size hitbox width (for pulsing fire scaling)
-	BaseHeight     float64 // Full-size hitbox height (for pulsing fire scaling)
-	OriginX        float64 // Tiled point X - base edge where fire emanates from
-	OriginY        float64 // Tiled point Y - base edge where fire emanates from
-	FrameWidth     float64 // Sprite frame width (for calculating sprite center)
-	SpriteCenterX  float64 // Pre-calculated sprite center X
-	SpriteCenterY  float64 // Pre-calculated sprite center Y
+	FireType       string                // "fire_pulsing" or "fire_continuous"
+	Active         bool                  // Currently dangerous?
+	Damage         int                   // Cached from config
+	KnockbackForce float64               // Cached from config
+	Direction      string                // "up", "down", "left", "right"
+	BaseWidth      float64               // Full-size hitbox width (for pulsing fire scaling)
+	BaseHeight     float64               // Full-size hitbox height (for pulsing fire scaling)
+	OriginX        float64               // Tiled point X - base edge where fire emanates from
+	OriginY        float64               // Tiled point Y - base edge where fire emanates from
+	FrameWidth     float64               // Sprite frame width (for calculating sprite center)
+	SpriteCenterX  float64               // Pre-calculated sprite center X
+	SpriteCenterY  float64               // Pre-calculated sprite center Y
 	HitboxPhases   []cfg.FireHitboxPhase // Cached from config (nil = static hitbox)
 }
 

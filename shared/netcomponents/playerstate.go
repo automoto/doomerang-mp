@@ -7,7 +7,7 @@ import (
 
 type NetPlayerStateData struct {
 	StateID   config.StateID
-	Direction int  // -1 left, 1 right
+	Direction int // -1 left, 1 right
 	Health    int
 	IsLocal   bool // Client-side only, not synced
 }

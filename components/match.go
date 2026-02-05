@@ -18,12 +18,12 @@ type PlayerScore struct {
 type MatchData struct {
 	State          cfg.MatchStateID
 	GameMode       cfg.GameModeID
-	Timer          int            // Countdown or match timer (frames remaining)
-	Duration       int            // Total match duration (frames)
-	Scores         []PlayerScore  // Score per player slot (indexed by PlayerIndex)
-	WinnerIndex    int            // PlayerIndex of winner (-1 if no winner yet, -2 for tie)
-	WinningTeam    int            // Team index for team modes (-1 if not applicable)
-	CountdownValue int            // Current countdown number (3, 2, 1, GO)
+	Timer          int           // Countdown or match timer (frames remaining)
+	Duration       int           // Total match duration (frames)
+	Scores         []PlayerScore // Score per player slot (indexed by PlayerIndex)
+	WinnerIndex    int           // PlayerIndex of winner (-1 if no winner yet, -2 for tie)
+	WinningTeam    int           // Team index for team modes (-1 if not applicable)
+	CountdownValue int           // Current countdown number (3, 2, 1, GO)
 }
 
 var Match = donburi.NewComponentType[MatchData]()

@@ -5,7 +5,7 @@ import (
 )
 
 type PlayerData struct {
-	PlayerIndex         int    // 0-3 player index for multiplayer
+	PlayerIndex         int // 0-3 player index for multiplayer
 	Direction           Vector
 	ComboCounter        int // For tracking punch/kick sequences
 	InvulnFrames        int // Invulnerability frames timer

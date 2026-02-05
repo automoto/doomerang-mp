@@ -125,4 +125,3 @@ func createFireAnimation(state cfg.StateID, frameWidth, frameHeight int) *compon
 
 	return animData
 }
-
