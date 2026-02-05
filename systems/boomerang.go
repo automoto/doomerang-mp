@@ -120,16 +120,33 @@ func checkCollisions(ecs *ecs.ECS, e *donburi.Entry, b *components.BoomerangData
 			}
 		}
 
-		// Player Collision (Catch)
-		if b.State == components.BoomerangInbound {
-			if players := check.ObjectsByTags(tags.ResolvPlayer); len(players) > 0 {
-				ownerObj := components.Object.Get(b.Owner)
-				for _, pObj := range players {
-					if pObj == ownerObj.Object {
+		// Player Collision - hit other players OR catch own boomerang
+		if players := check.ObjectsByTags(tags.ResolvPlayer); len(players) > 0 {
+			for _, pObj := range players {
+				playerEntry, ok := pObj.Data.(*donburi.Entry)
+				if !ok || playerEntry == nil || !playerEntry.Valid() {
+					continue
+				}
+
+				targetPlayer := components.Player.Get(playerEntry)
+
+				// Check if this is the owner
+				if targetPlayer.PlayerIndex == b.OwnerIndex {
+					// Owner can only catch on inbound
+					if b.State == components.BoomerangInbound {
 						catchBoomerang(ecs, e, b)
 						return
 					}
+					continue
 				}
+
+				// Skip teammates (no friendly fire)
+				if areTeammates(ecs, b.OwnerIndex, targetPlayer.PlayerIndex) {
+					continue
+				}
+
+				// Hit other player!
+				handlePlayerHit(ecs, e, b, pObj)
 			}
 		}
 	}
@@ -209,6 +226,80 @@ func handleEnemyCollision(ecs *ecs.ECS, boomerangEntry *donburi.Entry, b *compon
 	b.HitEnemies[enemyEntry] = struct{}{}
 
 	// Short Return Rule
+	if b.State == components.BoomerangOutbound {
+		newMax := b.DistanceTraveled + b.PierceDistance
+		if newMax < b.MaxRange {
+			b.MaxRange = newMax
+		}
+	}
+}
+
+func handlePlayerHit(ecs *ecs.ECS, boomerangEntry *donburi.Entry, b *components.BoomerangData, playerObj *resolv.Object) {
+	playerEntry, ok := playerObj.Data.(*donburi.Entry)
+	if !ok || playerEntry == nil || !playerEntry.Valid() {
+		return
+	}
+
+	// Check if already hit this player
+	if _, alreadyHit := b.HitPlayers[playerEntry]; alreadyHit {
+		return
+	}
+
+	player := components.Player.Get(playerEntry)
+	if player.InvulnFrames > 0 {
+		return // Player is invulnerable
+	}
+
+	// Play impact sound
+	PlaySFX(ecs, cfg.SoundBoomerangImpact)
+
+	// Visual effects
+	TriggerDamageFlash(playerEntry)
+
+	// Impact effect at player position
+	impactX := playerObj.X + playerObj.W/2
+	impactY := playerObj.Y + playerObj.H/2
+	explosionScale := 0.5 + b.ChargeRatio*0.5
+	factory.SpawnExplosion(ecs, impactX, impactY, explosionScale)
+	TriggerScreenShake(ecs, cfg.ScreenShake.BoomerangIntensity, cfg.ScreenShake.BoomerangDuration)
+
+	// Apply damage via DamageEvent (with attacker info for KO tracking)
+	if playerEntry.HasComponent(components.Health) {
+		donburi.Add(playerEntry, components.DamageEvent, &components.DamageEventData{
+			Amount:        b.Damage,
+			AttackerIndex: b.OwnerIndex,
+		})
+	}
+
+	// Set Hit state
+	if playerEntry.HasComponent(components.State) {
+		state := components.State.Get(playerEntry)
+		state.CurrentState = cfg.Hit
+		state.StateTimer = 0
+	}
+
+	// Apply knockback
+	if playerPhysics := components.Physics.Get(playerEntry); playerPhysics != nil {
+		boomerangObj := components.Object.Get(boomerangEntry).Object
+		boomerangCenterX := boomerangObj.X + boomerangObj.W/2
+		playerCenterX := playerObj.X + playerObj.W/2
+
+		// Knockback pushes player AWAY from boomerang
+		knockbackDirection := 1.0
+		if playerCenterX < boomerangCenterX {
+			knockbackDirection = -1.0
+		}
+
+		playerPhysics.SpeedX = knockbackDirection * cfg.Boomerang.HitKnockback
+		playerPhysics.SpeedY = cfg.Combat.KnockbackUpwardForce
+	}
+
+	// Note: Player invuln frames are set by combat.go when processing the DamageEvent
+
+	// Add to hit map
+	b.HitPlayers[playerEntry] = struct{}{}
+
+	// Short Return Rule - same as enemies
 	if b.State == components.BoomerangOutbound {
 		newMax := b.DistanceTraveled + b.PierceDistance
 		if newMax < b.MaxRange {

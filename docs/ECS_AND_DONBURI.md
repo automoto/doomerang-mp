@@ -1,286 +1,395 @@
 # Entity Component System (ECS) and the `donburi` Library
 
-This document provides a concise explanation of the Entity Component System (ECS) architecture and how it is implemented in this project using the `donburi` library.
+This document explains the ECS architecture and multiplayer systems implemented in Doomerang using the `donburi` library.
 
 ## What is ECS?
 
 ECS is a software architectural pattern primarily used in game development. It follows the principle of "composition over inheritance," which helps to create flexible and efficient game logic. The architecture is built on three core concepts:
 
-*   **Entities**: An entity is a unique identifier for a game object. It's essentially a number that has no data or behavior associated with it. Think of it as a key in a database.
-*   **Components**: Components are plain data structures that hold the state of an entity. They do not contain any logic. For example, a `PositionComponent` might store an entity's `(x, y)` coordinates, and a `VelocityComponent` would store its speed and direction.
-*   **Systems**: Systems are responsible for implementing the game's logic. They operate on entities that have a specific set of components. For example, a `MovementSystem` would query the ECS world for all entities that have both a `PositionComponent` and a `VelocityComponent` and then update their positions based on their velocities.
+- **Entities**: Unique identifiers for game objects. An entity is essentially a number with no data or behavior.
+- **Components**: Plain data structures that hold the state of an entity. They contain no logic.
+- **Systems**: Functions that implement game logic by operating on entities with specific components.
 
-## Why Use ECS?
+### Why Use ECS?
 
-The primary benefits of using an ECS architecture are:
+- **Flexibility**: Entities are defined by their components, making it easy to create new types by mixing and matching.
+- **Performance**: Components are stored contiguously in memory, enabling cache-friendly iteration.
+- **Decoupling**: Separation of data (components) from logic (systems) leads to a maintainable codebase.
 
-*   **Flexibility**: Because entities are defined by their components, it's easy to create new types of game objects by simply mixing and matching components. This avoids the rigid class hierarchies that are common in object-oriented programming.
-*   **Performance**: ECS is very cache-friendly. Since components are stored contiguously in memory, systems can iterate over them very efficiently. This leads to significant performance gains, especially in games with a large number of entities.
-*   **Decoupling**: The separation of data (components) from logic (systems) leads to a highly decoupled codebase. This makes it easier to reason about the game's behavior, add new features, and reuse code.
+---
 
-## How We Use `donburi`
+## Project Structure
 
-In this project, we use the `donburi` library to implement the ECS architecture. `donburi` provides a simple and efficient way to manage entities, components, and systems. Here's how we've organized our code:
+```
+/components        Data-only structures
+/systems           Game logic (Update functions)
+/systems/factory   Entity creation functions
+/archetypes        Pre-defined component bundles
+/tags              Entity and collision tags
+/config            Global constants and configuration
+/scenes            Game state management
+/assets            Tiled maps, spritesheets, audio
+```
 
-### Components
+---
 
-All components are defined in the `components/` directory. Each component is a simple struct that holds data. 
+## Core Components
 
-#### Pointer Wrapper Pattern (`ObjectData`)
-A critical pattern used in this project is the **Pointer Wrapper** for external library objects. For example, `resolv.Object` is stored as:
+### Player Component
+
+The `PlayerData` component identifies players in multiplayer:
+
+```go
+type PlayerData struct {
+    PlayerIndex         int            // 0-3 player index for multiplayer
+    Direction           Vector         // Facing direction
+    ComboCounter        int            // Punch/kick sequences
+    InvulnFrames        int            // Invulnerability timer
+    ActiveBoomerang     *donburi.Entry // Currently thrown boomerang
+    // ...
+}
+```
+
+**Key Field**: `PlayerIndex` is critical for:
+- Preventing self-damage (player can't hit themselves)
+- Team identification (same team = no friendly fire)
+- KO attribution (tracking who killed whom)
+
+### Match Component
+
+The `MatchData` component is a singleton that tracks the current match state:
+
+```go
+type MatchData struct {
+    State          MatchStateID   // Countdown, Playing, Finished
+    GameMode       GameModeID     // FFA, 1v1, 2v2, CoopVsBots
+    Timer          int            // Match timer (frames remaining)
+    Scores         []PlayerScore  // Per-player statistics
+    WinnerIndex    int            // Winner (-1 = no winner, -2 = tie)
+    WinningTeam    int            // For team modes
+}
+
+type PlayerScore struct {
+    PlayerIndex int
+    KOs         int  // Kills/knockouts
+    Deaths      int
+    Team        int  // 0 or 1 for team modes, -1 for FFA
+}
+```
+
+### Damage Event Component
+
+Damage is applied through a queued event system:
+
+```go
+type DamageEventData struct {
+    Amount        int     // Damage to apply
+    KnockbackX    float64 // Optional knockback
+    KnockbackY    float64
+    AttackerIndex int     // PlayerIndex of attacker for KO tracking
+}
+```
+
+**Important**: `DamageEvent` is a transient component. Add it to apply damage, and the `UpdateCombat` system processes and removes it.
+
+---
+
+## Multiplayer Combat System
+
+### Architecture Overview
+
+The combat system supports:
+- **PvP**: Players can damage other players
+- **PvE**: Players can damage enemies (bots are players with Bot component)
+- **Team-based**: Teammates cannot damage each other
+
+### Hit Detection Flow
+
+```
+1. Player attacks (punch/kick/boomerang)
+       ↓
+2. Hitbox created with OwnerEntity reference
+       ↓
+3. checkHitboxCollisions() runs:
+   - Get owner's PlayerIndex
+   - Check collision with ResolvPlayer and ResolvEnemy tags
+   - Skip self (same PlayerIndex)
+   - Skip teammates (areTeammates check)
+   - Call applyHitToTarget() for valid hits
+       ↓
+4. applyHitToTarget() triggers:
+   - Visual effects (flash, particles, screen shake)
+   - Adds DamageEvent component
+   - Applies knockback
+       ↓
+5. UpdateCombat() processes DamageEvent:
+   - Checks invulnerability (skips if invuln)
+   - Applies damage to Health.Current
+   - Sets player state to Stunned
+   - Sets InvulnFrames (prevents stun-lock)
+   - Removes DamageEvent component
+       ↓
+6. If Health.Current == 0:
+   - Death sequence triggers
+   - KO credited to AttackerIndex
+```
+
+### Team-Based Friendly Fire Prevention
+
+The `areTeammates()` function prevents friendly fire:
+
+```go
+func areTeammates(ecs *ecs.ECS, playerIndex1, playerIndex2 int) bool {
+    match := components.Match.Get(matchEntry)
+
+    score1 := match.GetPlayerScore(playerIndex1)
+    score2 := match.GetPlayerScore(playerIndex2)
+
+    // Team -1 means FFA (no team), so not teammates
+    if score1.Team == -1 || score2.Team == -1 {
+        return false
+    }
+
+    return score1.Team == score2.Team
+}
+```
+
+This is checked in:
+- `checkHitboxCollisions()` for melee attacks
+- `checkCollisions()` in boomerang.go for projectiles
+
+### Bots Are Players
+
+Bots use `PlayerData` with `PlayerIndex`, not a separate enemy type:
+
+```go
+func CreateBotPlayer(ecs *ecs.ECS, x, y float64, playerIndex int, difficulty BotDifficulty) {
+    player := CreatePlayer(ecs, x, y, inputCfg)  // Same as human player
+    player.AddComponent(components.Bot)           // Add AI component
+}
+```
+
+This means bots automatically work with the PvP system - they can hit and be hit by all players.
+
+---
+
+## Component Patterns
+
+### Pointer Wrapper Pattern
+
+External library objects (like `resolv.Object`) must be wrapped:
 
 ```go
 type ObjectData struct {
-	*resolv.Object
+    *resolv.Object
 }
 var Object = donburi.NewComponentType[ObjectData]()
 ```
 
-**Why?** Donburi stores component data in contiguous slices. When these slices grow, they reallocate, and the memory addresses of the components change. Libraries like `resolv` maintain their own pointers to these objects. By storing a pointer *inside* the component (the wrapper), we ensure that the address held by the library remains valid even if the component itself moves in memory.
+**Why?** Donburi stores components in slices that reallocate as they grow. The wrapper ensures the pointer held by external libraries remains valid.
 
-#### State Management (`StateID`)
-Characters use a type-safe `StateID` enum (defined in `config/states.go`) instead of strings:
+### Reverse Lookup Pattern
+
+Always set `obj.Data` for O(1) entity lookup from physics objects:
+
+```go
+obj := resolv.NewObject(x, y, w, h)
+obj.Data = entry  // Critical for collision callbacks
+```
+
+### State Management
+
+Characters use a type-safe `StateID` enum:
 
 ```go
 type StateData struct {
-	CurrentState  config.StateID
-	PreviousState config.StateID
-	StateTimer    int
+    CurrentState  config.StateID
+    PreviousState config.StateID
+    StateTimer    int
 }
 ```
 
-#### Input Abstraction (`InputData`)
-Player input is decoupled from raw key polling via an `InputData` component. This component stores the state of logical actions rather than raw keys. 
+States are defined in `config/states.go`. Never use string comparisons for state.
 
-**Note:** We use parallel arrays for the current and previous frames to allow for zero-allocation updates.
+### Input Abstraction
+
+Input is decoupled from raw polling via `InputData`:
 
 ```go
 type InputData struct {
-	Current         [cfg.ActionCount]bool // Current frame's Pressed state
-	Previous        [cfg.ActionCount]bool // Previous frame's Pressed state
-	LastInputMethod InputMethod           // Keyboard, Xbox, PlayStation
+    Current  [cfg.ActionCount]bool  // This frame
+    Previous [cfg.ActionCount]bool  // Last frame
 }
+
+// Usage in systems:
+if systems.GetAction(input, cfg.ActionJump).JustPressed { ... }
 ```
 
-The `UpdateInput` system (runs first) polls raw input and populates the `Current` array. Systems access input using the `GetAction` helper, which calculates state transitions on the fly:
+**Never** call `ebiten.IsKeyPressed()` directly in game systems.
+
+---
+
+## System Execution Order
+
+Systems run in a specific order each frame:
+
+1. **UpdateInput** - Polls raw input, populates InputData
+2. **UpdateMatch** - Match timer, state transitions
+3. **UpdatePlayer** - Player state machine, movement intent
+4. **UpdateBot** - AI decision making (generates input)
+5. **UpdateCombatHitboxes** - Creates/updates attack hitboxes
+6. **UpdateBoomerang** - Projectile physics and collision
+7. **UpdateCombat** - Processes DamageEvents, applies damage
+8. **UpdatePhysics** - Movement, gravity, collision resolution
+9. **UpdateDeath** - Death timers, respawn logic
+10. **UpdateCamera** - Follow players, dynamic zoom
+
+**Critical**: `UpdateCombat` must run after hitbox/boomerang systems so `DamageEvent` components exist when processed.
+
+---
+
+## Factory Pattern
+
+Factories own the entire entity creation process:
 
 ```go
-// Helper to get derived state
-func GetAction(input *components.InputData, id cfg.ActionID) ActionState {
-    return ActionState{
-        Pressed:      input.Current[id],
-        JustPressed:  input.Current[id] && !input.Previous[id],
-        JustReleased: !input.Current[id] && input.Previous[id],
-    }
-}
-```
+// GOOD - Factory creates everything
+func CreatePlayer(ecs *ecs.ECS, x, y float64, inputCfg PlayerInputConfig) *donburi.Entry {
+    player := archetypes.Player.Spawn(ecs)
 
-### Asset Management & Caching
+    obj := resolv.NewObject(x, y, w, h)
+    obj.Data = player  // Reverse lookup
+    obj.AddTags(tags.ResolvPlayer)
 
-To ensure smooth performance and avoid runtime stutters, we employ a robust asset caching strategy located in `assets/assets.go`.
+    components.Player.SetValue(player, components.PlayerData{
+        PlayerIndex: inputCfg.PlayerIndex,
+        // ...
+    })
 
-#### `AnimationLoader` & Frame Caching
-We use a global `AnimationLoader` that maintains two levels of caching:
-1.  **Image Cache (`cache`)**: Stores the raw loaded `*ebiten.Image` for full sprite sheets (e.g., `player/idle.png`).
-2.  **Frame Cache (`frameCache`)**: Stores `*ebiten.Image` sub-images for individual frames.
-
-**Why cache frames?**
-In Ebitengine, calling `SubImage` creates a new lightweight image struct. Doing this every frame for every entity would generate significant garbage. By caching the sub-image for "Player-Idle-Frame1", all entities using that animation share the exact same `*ebiten.Image` pointer.
-
-```go
-func (l *AnimationLoader) GetFrame(dir string, state config.StateID, frameIndex int, srcRect image.Rectangle) *ebiten.Image {
-    key := fmt.Sprintf("%s/%s/%d", dir, state.String(), frameIndex)
-    if img, ok := l.frameCache[key]; ok {
-        return img
-    }
-    // ... loads sheet, creates sub-image, caches it ...
-}
-```
-
-#### Preloading
-The `PreloadAllAnimations` function runs at game startup. It iterates through defined animations (for player, enemies, VFX) and populates the `frameCache` immediately. This ensures that the first time an explosion or jump happens, there is no IO or allocation cost.
-
-### Systems
-
-Systems contain the game's logic and are located in the `systems/` directory. A system is a function that takes an `*ecs.ECS` instance as an argument. For example, `systems/physics.go` defines the `UpdatePhysics` system:
-
-```go
-package systems
-
-import (
-	"github.com/automoto/doomerang/components"
-	"github.com/yohamta/donburi"
-	"github.com/yohamta/donburi/ecs"
-)
-
-func UpdatePhysics(ecs *ecs.ECS) {
-	components.Physics.Each(ecs.World, func(e *donburi.Entry) {
-		// ...
-	})
-}
-```
-
-Systems query the ECS world for entities that have the components they're interested in and then perform operations on that data.
-
-### Archetypes
-
-To simplify the creation of entities, we use archetypes, which are defined in `archetypes/archetypes.go`. An archetype is a pre-defined set of components that represents a type of entity. For example, the `Player` archetype is defined as:
-
-```go
-package archetypes
-
-// ...
-
-var (
-    Player = newArchetype(
-        tags.Player,
-        components.Player,
-        components.Object,
-        components.Animation,
-        components.Physics,
-    )
-)
-```
-
-This makes it easy to create a new player entity with all the necessary components.
-
-### Tags
-
-In Donburi ECS, tags are special components used to label and identify entities without attaching complex data. They are defined in `tags/tags.go`.
-
-#### Why use tags?
-- **Lightweight Identification**: Tags act as flags (e.g., `Player`, `Enemy`, `Platform`) to easily categorize entities.
-- **Filtering Queries**: They allow systems to efficiently query for specific groups of entities. For example, the `render` system might query all entities with a `Player` tag to apply player-specific rendering logic.
-
-#### Usage
-- **Defining Tags**: Tags are defined as exported variables in `tags/tags.go` using `donburi.NewTag().SetName("TagName")`.
-- **Adding to Entities**: Tags are added to entities during creation, typically within Archetypes (see `archetypes/archetypes.go`).
-- **Querying**: Systems can use tags to iterate over specific entities:
-  ```go
-  // Example: Iterate over all entities with the Player tag
-  tags.Player.Each(ecs.World, func(e *donburi.Entry) {
-      // Logic for player entity
-  })
-
-  // Example: Check if a specific entity has a tag
-  if e.HasComponent(tags.Enemy) {
-      // Logic for enemy entity
-  }
-  ```
-
-### Factories
-
-Factories, located in the `systems/factory/` directory, are responsible for creating and initializing complex entities. They use archetypes to spawn new entities and then set their initial component values.
-
-**Key Rule: Factory Ownership**
-A factory function should "own" the entire creation process, including the creation of external physics objects. It should take simple parameters (position, size) rather than pre-created objects.
-
-```go
-// GOOD
-func CreateWall(ecs *ecs.ECS, x, y, w, h float64) *donburi.Entry {
-    // Factory creates the resolv object
-    obj := resolv.NewObject(x, y, w, h, tags.ResolvSolid)
-    // ...
+    return player
 }
 
-// BAD
-func CreateWall(ecs *ecs.ECS, obj *resolv.Object) *donburi.Entry {
-    // Factory relies on caller to create object correctly
-}
+// BAD - Caller creates objects
+func CreatePlayer(ecs *ecs.ECS, obj *resolv.Object) *donburi.Entry { ... }
 ```
 
-This approach encapsulates the complexity of entity creation and ensures that all entities are properly initialized with correct tags and data linkages.
-
-### Game Initialization
-
-The main game scene, `scenes/world.go`, is where everything comes together. In the `configure` method, we:
-
-1.  Create a new `ecs.ECS` instance.
-2.  Add all the systems and renderers to the ECS.
-3.  Use factories to create the initial game entities (level, player, camera, etc.).
+---
 
 ## Configuration Management
 
-We use a **Centralized Configuration** pattern. All game tuning values (speed, damage, health, dimensions) are stored in `config/config.go`.
-
-*   **Initialization**: All configuration structs are populated in the `init()` function of `config/config.go`.
-*   **Usage**: Systems and factories read directly from `config.Player`, `config.Combat`, etc.
-*   **Avoid**: Do not hardcode values in systems (e.g., `damage := 10`). Do not initialize config values in distributed `init()` functions across different packages.
-
-### Input Configuration
-
-Input bindings are defined in `config/input.go`. Each logical action (`ActionID`) maps to one or more keys/gamepad buttons:
+All tuning values live in `config/config.go`:
 
 ```go
-var Input = InputConfig{
-    Bindings: map[ActionID]InputBinding{
-        ActionJump: {
-            Keys: []ebiten.Key{ebiten.KeyX, ebiten.KeyW},
-            StandardGamepadButtons: []ebiten.StandardGamepadButton{
-                ebiten.StandardGamepadButtonRightBottom,
-            },
-        },
-        ActionAttack: {Keys: []ebiten.Key{ebiten.KeyZ}},
-        // ...
-    },
+var Combat = CombatConfig{
+    PlayerPunchDamage:    22,
+    PlayerInvulnFrames:   45,
+    KnockbackUpwardForce: -4.0,
+    // ...
 }
 ```
 
-To add a new action:
-1. Add the `ActionID` constant in `config/input.go`
-2. Add the binding in `config.Input.Bindings`
-3. Read it in systems via `systems.GetAction(input, cfg.ActionMyAction)`
+**Never** hardcode values in systems. Always reference `config.*`.
 
-## Physics & Resolv Integration
-
-We use `solarlune/resolv` for collision detection. To ensure high performance and correct ECS integration:
-
-1.  **Reverse Lookup (`Data` Field)**: When creating a `resolv.Object`, **ALWAYS** set its `Data` field to point to the `donburi.Entry`.
-    ```go
-    obj := resolv.NewObject(x, y, w, h)
-    obj.Data = entry // Critical for O(1) reverse lookup
-    ```
-2.  **Optimized Collision**: Use `obj.Check(...)` which utilizes the `resolv.Space` spatial partition (O(log N)). Avoid iterating all entities and checking `Shape.Intersection` (O(N)).
-3.  **Tag Constants**: Use defined constants in `tags/tags.go` (e.g., `tags.ResolvEnemy`) instead of string literals like "Enemy" or "solid".
+---
 
 ## Best Practices Checklist
 
+### Performance
 
+1. **Zero-Allocation Rendering**: Reuse `ebiten.DrawImageOptions` and `color.RGBA` - don't create new ones each frame.
 
-1.  **State Safety**: Always add new character or game states to `config/states.go` as `StateID` constants.
+2. **Component Caching**: Call `Get()` once per entity in loops:
+   ```go
+   components.Player.Each(ecs.World, func(e *donburi.Entry) {
+       player := components.Player.Get(e)  // Cache once
+       physics := components.Physics.Get(e)
+       // Use player and physics multiple times
+   })
+   ```
 
-2.  **Zero Allocation**: Avoid creating new objects (like `ebiten.DrawImageOptions` or `color.RGBA`) inside `Draw` or `Update` loops. Reuse package-level variables.
+3. **HasComponent Caching**: In hot loops, cache the bool:
+   ```go
+   isPlayer := e.HasComponent(components.Player)
+   isEnemy := e.HasComponent(components.Enemy)
+   // Use bools instead of repeated HasComponent calls
+   ```
 
-3.  **Component Caching**: When iterating over entities in a system, if you need to access multiple components, call `Get` once at the start of the loop body.
+4. **State Change Detection**: Only update tags when state actually changes:
+   ```go
+   if state.CurrentState == state.PreviousState { return }
+   // ... update tags ...
+   state.PreviousState = state.CurrentState
+   ```
 
-4.  **Pointer Wrappers**: Use `ObjectData` to store pointers to external objects (like `resolv.Object`) to prevent memory invalidation.
+### Safety
 
-5.  **Factory Integrity**: Factories must fully initialize the entity, including setting `obj.Data` and correct tags.
+5. **Pointer Wrappers**: Always use `ObjectData` for external library objects.
 
-6.  **Config Centralization**: All magic numbers belong in `config/config.go`.
+6. **Factory Integrity**: Factories must set `obj.Data = entry` and correct tags.
 
-7.  **Component Flag Caching**: In hot loops (like rendering), check `HasComponent` once at the start and store the bool (e.g., `isPlayer := e.HasComponent(...)`). This prevents repeated component map lookups.
+7. **Config Centralization**: All magic numbers belong in `config/config.go`.
 
-8.  **State Change Detection**: Only modify state tags when the state *actually changes*. Store a `PreviousState` to compare against `CurrentState`.
+8. **State Safety**: Add new states to `config/states.go` as `StateID` constants.
 
+9. **Input Abstraction**: Never poll input directly in game systems.
+
+### Multiplayer
+
+10. **Use PlayerIndex**: For self-hit prevention, use `PlayerIndex` comparison, not entity comparison:
     ```go
+    // GOOD
+    if targetPlayerIndex == ownerPlayerIndex { continue }
 
-    if state.CurrentState == state.PreviousState { return }
-
-    // ... update tags ...
-
-    state.PreviousState = state.CurrentState
-
+    // BAD - May fail for projectiles
+    if targetEntry == ownerEntry { continue }
     ```
 
-9.  **Config Caching**: If a system needs config data based on an entity type (e.g. `EnemyTypeConfig`), cache the pointer to that config struct in the component during creation. Avoid doing string map lookups (`config.Types[name]`) every frame.
+11. **Team Checks**: Always check `areTeammates()` before applying PvP damage.
 
-10. **Input Abstraction**: Never call `ebiten.IsKeyPressed` or `inpututil.*` directly in game systems. Read from the `InputData` component instead. This enables key remapping and multi-input support.
+12. **DamageEvent Flow**: Don't set `InvulnFrames` before adding `DamageEvent` - the combat system handles invulnerability after processing damage.
 
-    ```go
-    // GOOD - Read from InputData using helper
-    if systems.GetAction(input, cfg.ActionJump).JustPressed { ... }
+13. **AttackerIndex Tracking**: Always set `AttackerIndex` in `DamageEvent` for proper KO attribution.
 
-    // BAD - Direct input polling in game logic
-    if inpututil.IsKeyJustPressed(ebiten.KeyX) { ... }
-    ```
+---
+
+## Common Pitfalls
+
+### Invulnerability Bug
+
+**Wrong**: Setting invuln frames before damage event is processed
+```go
+player.InvulnFrames = 45  // BAD - combat.go will skip the damage
+donburi.Add(e, components.DamageEvent, &DamageEventData{...})
+```
+
+**Right**: Let `UpdateCombat` set invuln frames after processing
+```go
+donburi.Add(e, components.DamageEvent, &DamageEventData{...})
+// combat.go sets InvulnFrames after applying damage
+```
+
+### Missing Reverse Lookup
+
+**Wrong**: Forgetting to set `obj.Data`
+```go
+obj := resolv.NewObject(x, y, w, h)
+// obj.Data not set - collision callbacks can't find the entity!
+```
+
+**Right**: Always link physics object to entity
+```go
+obj := resolv.NewObject(x, y, w, h)
+obj.Data = entry
+```
+
+### Direct Input Polling
+
+**Wrong**: Polling keys in game logic
+```go
+if ebiten.IsKeyPressed(ebiten.KeyX) { jump() }
+```
+
+**Right**: Reading from InputData
+```go
+if systems.GetAction(input, cfg.ActionJump).Pressed { jump() }
+```

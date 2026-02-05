@@ -295,28 +295,72 @@ func updateHitboxPosition(hitbox *components.HitboxData, hitboxObject *resolv.Ob
 }
 
 func checkHitboxCollisions(ecs *ecs.ECS, hitboxEntry *donburi.Entry, hitbox *components.HitboxData, hitboxObject *resolv.Object) {
-	// Determine if owner is player or enemy
-	isPlayerAttack := hitbox.OwnerEntity.HasComponent(components.Player)
+	ownerEntry := hitbox.OwnerEntity
+	isPlayerAttack := ownerEntry.HasComponent(components.Player)
 
-	targetTag := tags.ResolvEnemy
-	if !isPlayerAttack {
-		targetTag = tags.ResolvPlayer
+	// Get owner's player index to prevent self-hits
+	ownerPlayerIndex := -1
+	if isPlayerAttack {
+		ownerPlayerIndex = components.Player.Get(ownerEntry).PlayerIndex
+	}
+
+	// Player attacks can hit both other players (PvP) and enemies (PvE)
+	// Enemy attacks only hit players
+	var targetTags []string
+	if isPlayerAttack {
+		targetTags = []string{tags.ResolvPlayer, tags.ResolvEnemy}
+	} else {
+		targetTags = []string{tags.ResolvPlayer}
 	}
 
 	// Efficient collision check using resolv space
-	if check := hitboxObject.Check(0, 0, targetTag); check != nil {
+	if check := hitboxObject.Check(0, 0, targetTags...); check != nil {
 		for _, obj := range check.Objects {
-			if targetEntry, ok := obj.Data.(*donburi.Entry); ok {
-				if shouldHitTarget(hitbox, targetEntry, hitboxObject, obj) {
-					if isPlayerAttack {
-						applyHitToEnemy(ecs, targetEntry, hitbox)
-					} else {
-						applyHitToPlayer(ecs, targetEntry, hitbox)
-					}
+			targetEntry, ok := obj.Data.(*donburi.Entry)
+			if !ok {
+				continue
+			}
+
+			// Skip hitting yourself (by PlayerIndex for players)
+			if isPlayerAttack && targetEntry.HasComponent(components.Player) {
+				targetPlayerIndex := components.Player.Get(targetEntry).PlayerIndex
+				if targetPlayerIndex == ownerPlayerIndex {
+					continue
 				}
+
+				// Skip teammates (no friendly fire)
+				if areTeammates(ecs, ownerPlayerIndex, targetPlayerIndex) {
+					continue
+				}
+			}
+
+			if shouldHitTarget(hitbox, targetEntry, hitboxObject, obj) {
+				applyHitToTarget(ecs, targetEntry, hitbox, ownerPlayerIndex)
 			}
 		}
 	}
+}
+
+// areTeammates returns true if two players are on the same team (and not in FFA mode)
+func areTeammates(ecs *ecs.ECS, playerIndex1, playerIndex2 int) bool {
+	matchEntry, ok := components.Match.First(ecs.World)
+	if !ok {
+		return false // No match data, assume no teams
+	}
+
+	match := components.Match.Get(matchEntry)
+
+	// Get both players' team assignments
+	score1 := match.GetPlayerScore(playerIndex1)
+	score2 := match.GetPlayerScore(playerIndex2)
+
+	// Team -1 means FFA (no team), so not teammates
+	if score1.Team == -1 || score2.Team == -1 {
+		return false
+	}
+
+	// Same team = teammates
+	return score1.Team == score2.Team
 }
 
 func shouldHitTarget(hitbox *components.HitboxData, target *donburi.Entry, hitboxObject, targetObject *resolv.Object) bool {
@@ -346,16 +390,21 @@ func shouldHitTarget(hitbox *components.HitboxData, target *donburi.Entry, hitbo
 	return true
 }
 
-func applyHitToEnemy(ecs *ecs.ECS, enemyEntry *donburi.Entry, hitbox *components.HitboxData) {
-	enemy := components.Enemy.Get(enemyEntry)
-	enemyObject := components.Object.Get(enemyEntry).Object
+// applyHitToTarget handles damage/knockback for any target (player or enemy)
+func applyHitToTarget(ecs *ecs.ECS, targetEntry *donburi.Entry, hitbox *components.HitboxData, attackerPlayerIndex int) {
+	targetObject := components.Object.Get(targetEntry).Object
 
 	// Mark as hit
-	hitbox.HitEntities[enemyEntry] = true
+	hitbox.HitEntities[targetEntry] = true
 
-	// Set Hit state immediately to prevent enemy AI from overriding knockback
-	if enemyEntry.HasComponent(components.State) {
-		state := components.State.Get(enemyEntry)
+	// Cache HasComponent checks
+	isTargetPlayer := targetEntry.HasComponent(components.Player)
+	isTargetEnemy := targetEntry.HasComponent(components.Enemy)
+	hasState := targetEntry.HasComponent(components.State)
+
+	// Set Hit state to prevent AI/player from overriding knockback
+	if hasState {
+		state := components.State.Get(targetEntry)
 		state.CurrentState = cfg.Hit
 		state.StateTimer = 0
 	}
@@ -363,48 +412,36 @@ func applyHitToEnemy(ecs *ecs.ECS, enemyEntry *donburi.Entry, hitbox *components
 	// Play hit sound
 	PlaySFX(ecs, cfg.SoundHit)
 
-	// Visual effects: flash and screen shake (same for punch, kick, jump kick)
-	TriggerHitFlash(enemyEntry)
-	TriggerScreenShake(ecs, cfg.ScreenShake.MeleeIntensity, cfg.ScreenShake.MeleeDuration)
+	// Visual effects differ for players vs enemies
+	if isTargetPlayer {
+		TriggerDamageFlash(targetEntry)
+		TriggerScreenShake(ecs, cfg.ScreenShake.PlayerDamageIntensity, cfg.ScreenShake.PlayerDamageDuration)
+	} else {
+		TriggerHitFlash(targetEntry)
+		TriggerScreenShake(ecs, cfg.ScreenShake.MeleeIntensity, cfg.ScreenShake.MeleeDuration)
+	}
 
-	// Spawn hit particles at enemy center, scaled by charge
-	hitX := enemyObject.X + enemyObject.W/2
-	hitY := enemyObject.Y + enemyObject.H/2
-	explosionScale := 0.5 + hitbox.ChargeRatio*0.5 // 50% to 100% size
+	// Spawn hit particles at target center, scaled by charge
+	hitX := targetObject.X + targetObject.W/2
+	hitY := targetObject.Y + targetObject.H/2
+	explosionScale := 0.5 + hitbox.ChargeRatio*0.5
 	factory.SpawnHitExplosion(ecs, hitX, hitY, explosionScale)
 
-	// Apply damage
-	donburi.Add(enemyEntry, components.DamageEvent, &components.DamageEventData{
-		Amount: hitbox.Damage,
+	// Apply damage via DamageEvent (with attacker info for KO tracking)
+	donburi.Add(targetEntry, components.DamageEvent, &components.DamageEventData{
+		Amount:        hitbox.Damage,
+		AttackerIndex: attackerPlayerIndex,
 	})
 
 	// Apply knockback
-	applyKnockback(enemyEntry, hitbox, enemyObject)
+	applyKnockback(targetEntry, hitbox, targetObject)
 
-	// Set invulnerability frames
-	enemy.InvulnFrames = cfg.Combat.EnemyInvulnFrames
-}
-
-func applyHitToPlayer(ecs *ecs.ECS, playerEntry *donburi.Entry, hitbox *components.HitboxData) {
-	playerObject := components.Object.Get(playerEntry).Object
-
-	// Mark as hit
-	hitbox.HitEntities[playerEntry] = true
-
-	// Play hit sound
-	PlaySFX(ecs, cfg.SoundHit)
-
-	// Visual effects: damage flash and stronger screen shake
-	TriggerDamageFlash(playerEntry)
-	TriggerScreenShake(ecs, cfg.ScreenShake.PlayerDamageIntensity, cfg.ScreenShake.PlayerDamageDuration)
-
-	// Apply damage
-	donburi.Add(playerEntry, components.DamageEvent, &components.DamageEventData{
-		Amount: hitbox.Damage,
-	})
-
-	// Apply knockback
-	applyKnockback(playerEntry, hitbox, playerObject)
+	// Set invulnerability frames for enemies only
+	// Player invuln frames are set by combat.go when processing the DamageEvent
+	if isTargetEnemy {
+		enemy := components.Enemy.Get(targetEntry)
+		enemy.InvulnFrames = cfg.Combat.EnemyInvulnFrames
+	}
 }
 
 func applyKnockback(targetEntry *donburi.Entry, hitbox *components.HitboxData, targetObject *resolv.Object) {

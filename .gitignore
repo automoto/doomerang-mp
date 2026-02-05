@@ -37,6 +37,8 @@ Thumbs.db
 agent/
 .claude/
 CLAUDE.local.md
+docs/plans/
+
 
 # assets
 assets/art-archive/
