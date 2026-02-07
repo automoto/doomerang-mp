@@ -196,10 +196,14 @@ func handleUpwardCollision(physics *components.PhysicsData, object *resolv.Objec
 		return check.ContactWithObject(solids[0]).Y()
 	}
 
+	// Handle ceiling cells (tile-based ceilings)
 	if len(check.Cells) > 0 && check.Cells[0].ContainsTags("solid") {
+		physics.SpeedY = 0 // Stop upward movement
 		if slide := check.SlideAgainstCell(check.Cells[0], "solid"); slide != nil {
 			object.X += slide.X()
+			return slide.Y()
 		}
+		return 0
 	}
 
 	return physics.SpeedY
@@ -255,6 +259,18 @@ func snapToSlopeSurface(physics *components.PhysicsData, object *resolv.Object, 
 	object.Y = surfaceY - object.H + slopeSurfaceOffset
 	physics.OnGround = ramp
 	physics.SpeedY = 0
+}
+
+// isNearRampSurface checks if the object is vertically close enough to snap to the ramp
+// This prevents characters from being teleported to distant ramps that happen to overlap horizontally
+func isNearRampSurface(object *resolv.Object, ramp *resolv.Object) bool {
+	surfaceY := getSlopeSurfaceY(object, ramp)
+	playerBottom := object.Y + object.H
+
+	// Allow snapping if feet are within 16 pixels of the ramp surface
+	// This accommodates normal movement speeds and small gaps
+	const snapTolerance = 16.0
+	return playerBottom >= surfaceY-snapTolerance && playerBottom <= surfaceY+snapTolerance
 }
 
 // getSlopeSurfaceY calculates the slope surface Y at the object's center X position
