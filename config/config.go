@@ -351,19 +351,19 @@ type PathfindingConfig struct {
 	LOSCheckSize    float64 // Size of LOS check points (pixels)
 
 	// Teammate collision avoidance
-	TeammateDetectRange      float64 // Range to detect nearby teammates
-	TeammateBlockingDist     float64 // Distance at which teammate blocks movement
+	TeammateDetectRange       float64 // Range to detect nearby teammates
+	TeammateBlockingDist      float64 // Distance at which teammate blocks movement
 	TeammateVerticalTolerance float64 // Vertical tolerance for blocking detection
 }
 
 // BotCombatConfig contains bot attack decision thresholds
 type BotCombatConfig struct {
-	PunchRange       float64 // Max distance for punch attacks
-	JumpKickMinRange float64 // Min distance for jump kick
-	JumpKickMaxRange float64 // Max distance for jump kick
+	PunchRange        float64 // Max distance for punch attacks
+	JumpKickMinRange  float64 // Min distance for jump kick
+	JumpKickMaxRange  float64 // Max distance for jump kick
 	BoomerangMinRange float64 // Min distance for boomerang throw
 	BoomerangMaxRange float64 // Max distance for boomerang throw
-	ApproachMinRange float64 // Min distance before approaching
+	ApproachMinRange  float64 // Min distance before approaching
 }
 
 // LevelCompleteConfig contains level complete overlay configuration
@@ -382,11 +382,12 @@ type LevelCompleteConfig struct {
 
 // NetworkConfig contains network/multiplayer configuration
 type NetworkConfig struct {
-	DefaultPort    string
-	DefaultAddress string
-	ConnectTimeout int
-	GameVersion    string
-	MoveSpeed      float64
+	DefaultPort     string
+	DefaultAddress  string
+	ConnectTimeout  int
+	GameVersion     string
+	MoveSpeed       float64
+	MasterServerURL string
 }
 
 // Config holds general game configuration
@@ -472,8 +473,8 @@ const (
 
 // PlayerColorData contains color info for a player slot in multiple formats
 type PlayerColorData struct {
-	RGBA       color.RGBA  // For HUD, UI elements
-	ShaderRGB  [3]float32  // Normalized 0-1 RGB for shader uniforms
+	RGBA      color.RGBA // For HUD, UI elements
+	ShaderRGB [3]float32 // Normalized 0-1 RGB for shader uniforms
 }
 
 // PlayerColorsConfig holds all player slot colors and shader settings
@@ -947,10 +948,11 @@ func init() {
 
 	// Network Config
 	Network = NetworkConfig{
-		DefaultPort:    "7373",
-		DefaultAddress: "localhost",
-		ConnectTimeout: 60 * 5,
-		GameVersion:    "0.1.0",
-		MoveSpeed:      3.0,
+		DefaultPort:     "7373",
+		DefaultAddress:  "localhost",
+		ConnectTimeout:  60 * 5,
+		GameVersion:     "0.1.0",
+		MoveSpeed:       3.0,
+		MasterServerURL: "http://localhost:8080",
 	}
 }

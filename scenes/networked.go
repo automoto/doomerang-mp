@@ -61,6 +61,14 @@ func (ns *NetworkedScene) Draw(screen *ebiten.Image) {
 
 func (ns *NetworkedScene) configure() {
 	ns.ecsWorld = ecs.NewECS(donburi.NewWorld())
+
+	sendFn := func(msg any) error {
+		if ns.netClient.State() != network.StateJoinedGame {
+			return nil
+		}
+		return ns.netClient.SendMessage(msg)
+	}
+	ns.ecsWorld.AddSystem(systems.NewNetworkInputSystem(sendFn))
 	ns.ecsWorld.AddSystem(systems.UpdateAudio)
 	ns.ecsWorld.AddRenderer(cfg.Default, systems.DrawNetworkedPlayers)
 	ns.ecsWorld.AddRenderer(cfg.Default, systems.DrawNetworkHUD)

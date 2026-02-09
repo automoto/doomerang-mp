@@ -1,30 +1,53 @@
 services:
-  # --- Game server for multiplayer testing ---
+  # --- Master server for server discovery ---
+  master:
+    build:
+      context: master
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    command:
+      - "--port=8080"
+      - "--ttl=30s"
+    restart: unless-stopped
+
+  # --- Game server registered with master ---
   server:
     build:
       context: .
       dockerfile: server/Dockerfile
     ports:
       - "7373:7373"
+    depends_on:
+      master:
+        condition: service_started
     command:
       - "--port=7373"
       - "--tickrate=20"
       - "--name=Test Server"
       - "--version=0.1.0"
-    restart: unless-stopped
+      - "--master=http://master:8080"
+      - "--address=localhost:7373"
+      - "--maxplayers=4"
+    # No restart — allows testing TTL expiry by stopping this container
 
-  # Same server with no version check (accepts any client)
-  server-no-version:
+  # Second game server to test browse list with multiple entries
+  server-2:
     build:
       context: .
       dockerfile: server/Dockerfile
     ports:
       - "7374:7374"
+    depends_on:
+      master:
+        condition: service_started
     command:
       - "--port=7374"
       - "--tickrate=20"
       - "--name=Open Server"
-    restart: unless-stopped
+      - "--master=http://master:8080"
+      - "--address=localhost:7374"
+      - "--maxplayers=4"
     profiles:
       - testing
 

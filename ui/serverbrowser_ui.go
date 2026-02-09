@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"image/color"
 	"log"
 
@@ -12,26 +13,48 @@ import (
 	"golang.org/x/image/font/gofont/goregular"
 )
 
+// ServerEntry represents a game server returned from the master server.
+type ServerEntry struct {
+	Name       string `json:"name"`
+	Address    string `json:"address"`
+	Players    int    `json:"players"`
+	MaxPlayers int    `json:"maxPlayers"`
+	Version    string `json:"version"`
+}
+
 type ServerBrowserUI struct {
 	UI *ebitenui.UI
 
 	OnConnect func(address string)
 	OnGoBack  func()
+	OnRefresh func()
 
 	ipInput     *widget.TextInput
 	portInput   *widget.TextInput
 	statusLabel *widget.Label
 	connectBtn  *widget.Button
 
+	activeTab           int
+	browsePanel         *widget.Container
+	directPanel         *widget.Container
+	panelParent         *widget.Container
+	serverListContainer *widget.Container
+	refreshBtn          *widget.Button
+	browseStatusLabel   *widget.Label
+	tabButtons          []*widget.Button
+	tabActiveImage      *widget.ButtonImage
+	tabInactiveImage    *widget.ButtonImage
+
 	titleFace  text.Face
 	normalFace text.Face
 	smallFace  text.Face
 }
 
-func NewServerBrowserUI(onConnect func(address string), onGoBack func()) *ServerBrowserUI {
+func NewServerBrowserUI(onConnect func(address string), onGoBack func(), onRefresh func()) *ServerBrowserUI {
 	ui := &ServerBrowserUI{
 		OnConnect: onConnect,
 		OnGoBack:  onGoBack,
+		OnRefresh: onRefresh,
 	}
 	ui.loadFonts()
 	ui.buildUI()
@@ -79,8 +102,16 @@ func (ui *ServerBrowserUI) buildUI() {
 	tabContainer := ui.buildTabBar()
 	contentContainer.AddChild(tabContainer)
 
-	directConnectPanel := ui.buildDirectConnectPanel()
-	contentContainer.AddChild(directConnectPanel)
+	ui.browsePanel = ui.buildBrowsePanel()
+	ui.directPanel = ui.buildDirectConnectPanel()
+
+	ui.panelParent = widget.NewContainer(
+		widget.ContainerOpts.Layout(widget.NewStackedLayout()),
+	)
+	// Default to Browse tab
+	ui.panelParent.AddChild(ui.browsePanel)
+	ui.activeTab = 0
+	contentContainer.AddChild(ui.panelParent)
 
 	ui.statusLabel = widget.NewLabel(
 		widget.LabelOpts.Text("", &ui.smallFace, &widget.LabelColor{
@@ -109,40 +140,239 @@ func (ui *ServerBrowserUI) buildTabBar() *widget.Container {
 		label   string
 		enabled bool
 	}{
-		{"Browse", false},
+		{"Browse", true},
 		{"Direct Connect", true},
 		{"Favorites", false},
 		{"Recent", false},
 	}
 
-	for _, tab := range tabs {
-		tabColor := color.RGBA{60, 60, 80, 255}
-		textColor := color.RGBA{100, 100, 100, 255}
-		if tab.enabled {
-			tabColor = color.RGBA{80, 80, 120, 255}
-			textColor = color.RGBA{255, 255, 255, 255}
+	ui.tabButtons = nil
+
+	activeColor := color.RGBA{80, 80, 120, 255}
+	inactiveColor := color.RGBA{60, 60, 80, 255}
+	disabledColor := color.RGBA{40, 40, 40, 255}
+
+	ui.tabActiveImage = &widget.ButtonImage{
+		Idle:     image.NewNineSliceColor(activeColor),
+		Hover:    image.NewNineSliceColor(activeColor),
+		Pressed:  image.NewNineSliceColor(activeColor),
+		Disabled: image.NewNineSliceColor(disabledColor),
+	}
+	ui.tabInactiveImage = &widget.ButtonImage{
+		Idle:     image.NewNineSliceColor(inactiveColor),
+		Hover:    image.NewNineSliceColor(inactiveColor),
+		Pressed:  image.NewNineSliceColor(activeColor),
+		Disabled: image.NewNineSliceColor(disabledColor),
+	}
+
+	for i, tab := range tabs {
+		idx := i
+		startImage := ui.tabInactiveImage
+		startTextColor := color.RGBA{180, 180, 180, 255}
+		if idx == 0 {
+			startImage = ui.tabActiveImage
+			startTextColor = color.RGBA{255, 255, 255, 255}
 		}
 
 		tabBtn := widget.NewButton(
 			widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(80, 22)),
-			widget.ButtonOpts.Image(&widget.ButtonImage{
-				Idle:     image.NewNineSliceColor(tabColor),
-				Hover:    image.NewNineSliceColor(tabColor),
-				Pressed:  image.NewNineSliceColor(tabColor),
-				Disabled: image.NewNineSliceColor(color.RGBA{40, 40, 40, 255}),
-			}),
+			widget.ButtonOpts.Image(startImage),
 			widget.ButtonOpts.Text(tab.label, &ui.smallFace, &widget.ButtonTextColor{
-				Idle:     textColor,
+				Idle:     startTextColor,
 				Disabled: color.RGBA{80, 80, 80, 255},
+			}),
+			widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+				ui.switchTab(idx)
 			}),
 		)
 		if !tab.enabled {
 			tabBtn.GetWidget().Disabled = true
 		}
 		container.AddChild(tabBtn)
+		ui.tabButtons = append(ui.tabButtons, tabBtn)
 	}
 
 	return container
+}
+
+func (ui *ServerBrowserUI) switchTab(idx int) {
+	if idx == ui.activeTab {
+		return
+	}
+
+	ui.panelParent.RemoveChildren()
+
+	for i, btn := range ui.tabButtons {
+		if btn.GetWidget().Disabled {
+			continue
+		}
+		if i == idx {
+			btn.SetImage(ui.tabActiveImage)
+		} else {
+			btn.SetImage(ui.tabInactiveImage)
+		}
+	}
+
+	switch idx {
+	case 0:
+		ui.panelParent.AddChild(ui.browsePanel)
+	case 1:
+		ui.panelParent.AddChild(ui.directPanel)
+	}
+
+	ui.activeTab = idx
+}
+
+func (ui *ServerBrowserUI) buildBrowsePanel() *widget.Container {
+	padding := widget.Insets{Top: 6, Bottom: 6, Left: 8, Right: 8}
+	panel := widget.NewContainer(
+		widget.ContainerOpts.BackgroundImage(image.NewNineSliceColor(color.RGBA{30, 30, 45, 255})),
+		widget.ContainerOpts.Layout(widget.NewRowLayout(
+			widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+			widget.RowLayoutOpts.Padding(&padding),
+			widget.RowLayoutOpts.Spacing(6),
+		)),
+	)
+
+	// Refresh button row
+	topRow := widget.NewContainer(
+		widget.ContainerOpts.Layout(widget.NewRowLayout(
+			widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+			widget.RowLayoutOpts.Spacing(8),
+		)),
+	)
+
+	ui.refreshBtn = widget.NewButton(
+		widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(80, 22)),
+		widget.ButtonOpts.Image(&widget.ButtonImage{
+			Idle:     image.NewNineSliceColor(color.RGBA{40, 80, 120, 255}),
+			Hover:    image.NewNineSliceColor(color.RGBA{60, 100, 140, 255}),
+			Pressed:  image.NewNineSliceColor(color.RGBA{30, 60, 100, 255}),
+			Disabled: image.NewNineSliceColor(color.RGBA{40, 50, 60, 255}),
+		}),
+		widget.ButtonOpts.Text("Refresh", &ui.normalFace, &widget.ButtonTextColor{
+			Idle:     color.RGBA{255, 255, 255, 255},
+			Disabled: color.RGBA{100, 100, 100, 255},
+		}),
+		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+			if ui.OnRefresh != nil {
+				ui.OnRefresh()
+			}
+		}),
+	)
+	topRow.AddChild(ui.refreshBtn)
+
+	ui.browseStatusLabel = widget.NewLabel(
+		widget.LabelOpts.Text("", &ui.smallFace, &widget.LabelColor{
+			Idle: color.RGBA{180, 180, 180, 255},
+		}),
+	)
+	topRow.AddChild(ui.browseStatusLabel)
+
+	panel.AddChild(topRow)
+
+	// Column headers
+	headerRow := widget.NewContainer(
+		widget.ContainerOpts.Layout(widget.NewRowLayout(
+			widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+			widget.RowLayoutOpts.Spacing(8),
+		)),
+	)
+	headerRow.AddChild(widget.NewLabel(
+		widget.LabelOpts.Text("Server Name", &ui.smallFace, &widget.LabelColor{
+			Idle: color.RGBA{150, 150, 150, 255},
+		}),
+		widget.LabelOpts.TextOpts(widget.TextOpts.WidgetOpts(widget.WidgetOpts.MinSize(180, 0))),
+	))
+	headerRow.AddChild(widget.NewLabel(
+		widget.LabelOpts.Text("Players", &ui.smallFace, &widget.LabelColor{
+			Idle: color.RGBA{150, 150, 150, 255},
+		}),
+	))
+	panel.AddChild(headerRow)
+
+	// Server list (scrollable area)
+	ui.serverListContainer = widget.NewContainer(
+		widget.ContainerOpts.Layout(widget.NewRowLayout(
+			widget.RowLayoutOpts.Direction(widget.DirectionVertical),
+			widget.RowLayoutOpts.Spacing(2),
+		)),
+		widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(300, 80)),
+	)
+	panel.AddChild(ui.serverListContainer)
+
+	return panel
+}
+
+func (ui *ServerBrowserUI) SetServerList(servers []ServerEntry) {
+	ui.serverListContainer.RemoveChildren()
+
+	if len(servers) == 0 {
+		ui.serverListContainer.AddChild(widget.NewLabel(
+			widget.LabelOpts.Text("No servers found", &ui.smallFace, &widget.LabelColor{
+				Idle: color.RGBA{120, 120, 120, 255},
+			}),
+		))
+		return
+	}
+
+	for _, srv := range servers {
+		addr := srv.Address
+		row := widget.NewContainer(
+			widget.ContainerOpts.Layout(widget.NewRowLayout(
+				widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+				widget.RowLayoutOpts.Spacing(8),
+			)),
+		)
+
+		row.AddChild(widget.NewLabel(
+			widget.LabelOpts.Text(srv.Name, &ui.smallFace, &widget.LabelColor{
+				Idle: color.RGBA{255, 255, 255, 255},
+			}),
+			widget.LabelOpts.TextOpts(widget.TextOpts.WidgetOpts(widget.WidgetOpts.MinSize(180, 0))),
+		))
+
+		row.AddChild(widget.NewLabel(
+			widget.LabelOpts.Text(fmt.Sprintf("%d/%d", srv.Players, srv.MaxPlayers), &ui.smallFace, &widget.LabelColor{
+				Idle: color.RGBA{200, 200, 200, 255},
+			}),
+			widget.LabelOpts.TextOpts(widget.TextOpts.WidgetOpts(widget.WidgetOpts.MinSize(40, 0))),
+		))
+
+		joinBtn := widget.NewButton(
+			widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(50, 20)),
+			widget.ButtonOpts.Image(&widget.ButtonImage{
+				Idle:    image.NewNineSliceColor(color.RGBA{40, 100, 40, 255}),
+				Hover:   image.NewNineSliceColor(color.RGBA{60, 140, 60, 255}),
+				Pressed: image.NewNineSliceColor(color.RGBA{30, 80, 30, 255}),
+			}),
+			widget.ButtonOpts.Text("Join", &ui.smallFace, &widget.ButtonTextColor{
+				Idle:    color.RGBA{255, 255, 255, 255},
+				Hover:   color.RGBA{200, 255, 200, 255},
+				Pressed: color.RGBA{150, 200, 150, 255},
+			}),
+			widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+				if ui.OnConnect != nil {
+					ui.OnConnect(addr)
+				}
+			}),
+		)
+		row.AddChild(joinBtn)
+
+		ui.serverListContainer.AddChild(row)
+	}
+}
+
+func (ui *ServerBrowserUI) SetBrowseStatus(msg string) {
+	if ui.browseStatusLabel != nil {
+		ui.browseStatusLabel.Label = msg
+	}
+}
+
+func (ui *ServerBrowserUI) SetRefreshing(refreshing bool) {
+	if ui.refreshBtn != nil {
+		ui.refreshBtn.GetWidget().Disabled = refreshing
+	}
 }
 
 func (ui *ServerBrowserUI) buildDirectConnectPanel() *widget.Container {
