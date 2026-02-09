@@ -135,7 +135,11 @@ func (ps *PlatformerScene) configure() {
 	ps.ecs = ecs
 
 	// Create the level entity and load level data FIRST.
-	level := factory2.CreateLevel(ps.ecs)
+	levelIndex := 0
+	if ps.matchConfig != nil {
+		levelIndex = ps.matchConfig.LevelIndex
+	}
+	level := factory2.CreateLevelAtIndex(ps.ecs, levelIndex)
 	levelData := components.Level.Get(level)
 
 	// Now create the space for collision detection using the level's dimensions.
@@ -208,7 +212,8 @@ func (ps *PlatformerScene) configure() {
 				firstPlayerSpawn = spawn
 			}
 
-			if slot.Type == components.SlotHuman {
+			switch slot.Type {
+			case components.SlotHuman:
 				inputCfg := factory2.PlayerInputConfig{
 					PlayerIndex:   i,
 					GamepadID:     slot.GamepadID,
@@ -223,7 +228,7 @@ func (ps *PlatformerScene) configure() {
 
 				playerObj := components.Object.Get(player)
 				space.Add(playerObj.Object)
-			} else if slot.Type == components.SlotBot {
+			case components.SlotBot:
 				bot := factory2.CreateBotPlayer(ps.ecs, spawn.X, spawn.Y, i, slot.BotDifficulty)
 				// Store original spawn for respawning
 				botData := components.Player.Get(bot)

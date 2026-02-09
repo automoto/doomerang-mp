@@ -25,7 +25,7 @@ type ServerEntry struct {
 type ServerBrowserUI struct {
 	UI *ebitenui.UI
 
-	OnConnect func(address string)
+	OnConnect func(address, level string)
 	OnGoBack  func()
 	OnRefresh func()
 
@@ -33,6 +33,10 @@ type ServerBrowserUI struct {
 	portInput   *widget.TextInput
 	statusLabel *widget.Label
 	connectBtn  *widget.Button
+
+	levelNames      []string
+	selectedLevelIdx int
+	levelLabel       *widget.Label
 
 	activeTab           int
 	browsePanel         *widget.Container
@@ -50,11 +54,12 @@ type ServerBrowserUI struct {
 	smallFace  text.Face
 }
 
-func NewServerBrowserUI(onConnect func(address string), onGoBack func(), onRefresh func()) *ServerBrowserUI {
+func NewServerBrowserUI(onConnect func(address, level string), onGoBack func(), onRefresh func(), levelNames []string) *ServerBrowserUI {
 	ui := &ServerBrowserUI{
-		OnConnect: onConnect,
-		OnGoBack:  onGoBack,
-		OnRefresh: onRefresh,
+		OnConnect:  onConnect,
+		OnGoBack:   onGoBack,
+		OnRefresh:  onRefresh,
+		levelNames: levelNames,
 	}
 	ui.loadFonts()
 	ui.buildUI()
@@ -353,7 +358,7 @@ func (ui *ServerBrowserUI) SetServerList(servers []ServerEntry) {
 			}),
 			widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
 				if ui.OnConnect != nil {
-					ui.OnConnect(addr)
+					ui.OnConnect(addr, "")
 				}
 			}),
 		)
@@ -454,6 +459,51 @@ func (ui *ServerBrowserUI) buildDirectConnectPanel() *widget.Container {
 
 	panel.AddChild(portRow)
 
+	// Level row
+	if len(ui.levelNames) > 0 {
+		levelRow := widget.NewContainer(
+			widget.ContainerOpts.Layout(widget.NewRowLayout(
+				widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+				widget.RowLayoutOpts.Spacing(6),
+			)),
+		)
+
+		levelRowLabel := widget.NewLabel(
+			widget.LabelOpts.Text("Level:    ", &ui.normalFace, &widget.LabelColor{
+				Idle: color.RGBA{200, 200, 200, 255},
+			}),
+		)
+		levelRow.AddChild(levelRowLabel)
+
+		ui.levelLabel = widget.NewLabel(
+			widget.LabelOpts.Text(ui.levelNames[0], &ui.normalFace, &widget.LabelColor{
+				Idle: color.RGBA{255, 255, 100, 255},
+			}),
+			widget.LabelOpts.TextOpts(widget.TextOpts.WidgetOpts(widget.WidgetOpts.MinSize(100, 0))),
+		)
+		levelRow.AddChild(ui.levelLabel)
+
+		levelBtn := widget.NewButton(
+			widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(50, 22)),
+			widget.ButtonOpts.Image(&widget.ButtonImage{
+				Idle:    image.NewNineSliceColor(color.RGBA{60, 60, 80, 255}),
+				Hover:   image.NewNineSliceColor(color.RGBA{80, 80, 100, 255}),
+				Pressed: image.NewNineSliceColor(color.RGBA{40, 40, 60, 255}),
+			}),
+			widget.ButtonOpts.Text("Change", &ui.smallFace, &widget.ButtonTextColor{
+				Idle:    color.RGBA{200, 200, 200, 255},
+				Hover:   color.RGBA{255, 255, 255, 255},
+				Pressed: color.RGBA{150, 150, 150, 255},
+			}),
+			widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+				ui.cycleLevel()
+			}),
+		)
+		levelRow.AddChild(levelBtn)
+
+		panel.AddChild(levelRow)
+	}
+
 	ui.connectBtn = widget.NewButton(
 		widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(120, 26)),
 		widget.ButtonOpts.Image(&widget.ButtonImage{
@@ -471,7 +521,7 @@ func (ui *ServerBrowserUI) buildDirectConnectPanel() *widget.Container {
 		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
 			if ui.OnConnect != nil {
 				addr := ui.getAddress()
-				ui.OnConnect(addr)
+				ui.OnConnect(addr, ui.SelectedLevel())
 			}
 		}),
 	)
@@ -533,6 +583,24 @@ func (ui *ServerBrowserUI) SetConnecting(connecting bool) {
 	if ui.connectBtn != nil {
 		ui.connectBtn.GetWidget().Disabled = connecting
 	}
+}
+
+func (ui *ServerBrowserUI) cycleLevel() {
+	if len(ui.levelNames) == 0 {
+		return
+	}
+	ui.selectedLevelIdx = (ui.selectedLevelIdx + 1) % len(ui.levelNames)
+	if ui.levelLabel != nil {
+		ui.levelLabel.Label = ui.levelNames[ui.selectedLevelIdx]
+	}
+}
+
+// SelectedLevel returns the currently selected level name, or empty if none.
+func (ui *ServerBrowserUI) SelectedLevel() string {
+	if len(ui.levelNames) == 0 {
+		return ""
+	}
+	return ui.levelNames[ui.selectedLevelIdx]
 }
 
 func (ui *ServerBrowserUI) Update() {

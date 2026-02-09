@@ -1,6 +1,9 @@
 package systems
 
 import (
+	"strings"
+
+	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -413,4 +416,30 @@ func GetTeamName(team int) string {
 	default:
 		return "None"
 	}
+}
+
+// InitLevelList populates LevelNames from the embedded assets.
+func InitLevelList(lobby *components.LobbyData) {
+	loader := assets.NewLevelLoader()
+	lobby.LevelNames = loader.ListLevelNames()
+	lobby.LevelIndex = 0
+}
+
+// CycleLevel advances to the next level.
+func CycleLevel(lobby *components.LobbyData) {
+	if len(lobby.LevelNames) == 0 {
+		return
+	}
+	lobby.LevelIndex = (lobby.LevelIndex + 1) % len(lobby.LevelNames)
+}
+
+// GetLevelDisplayName converts a stem name like "arena_battle_starter" to "Arena Battle Starter".
+func GetLevelDisplayName(name string) string {
+	parts := strings.Split(name, "_")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, " ")
 }

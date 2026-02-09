@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/automoto/doomerang-mp/assets"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/network"
 	"github.com/automoto/doomerang-mp/systems"
@@ -124,10 +125,15 @@ func (s *ServerBrowserScene) configure() {
 	s.ecsWorld = ecs.NewECS(donburi.NewWorld())
 
 	s.ecsWorld.AddSystem(systems.UpdateAudio)
+
+	// Discover local level names for the level selector
+	levelNames := discoverLevelNames()
+
 	s.browserUI = ui.NewServerBrowserUI(
-		func(address string) { s.onConnect(address) },
+		func(address, level string) { s.onConnect(address, level) },
 		func() { s.shouldGoBack = true },
 		func() { s.fetchServers() },
+		levelNames,
 	)
 
 	systems.PlayMusic(s.ecsWorld, cfg.Sound.MenuMusic)
@@ -136,7 +142,7 @@ func (s *ServerBrowserScene) configure() {
 	s.fetchServers()
 }
 
-func (s *ServerBrowserScene) onConnect(address string) {
+func (s *ServerBrowserScene) onConnect(address, level string) {
 	if s.netClient != nil {
 		s.netClient.Disconnect()
 	}
@@ -145,7 +151,7 @@ func (s *ServerBrowserScene) onConnect(address string) {
 	s.browserUI.SetConnecting(true)
 
 	s.netClient = network.NewClient()
-	s.netClient.Connect(address, cfg.Network.GameVersion, "Player")
+	s.netClient.Connect(address, cfg.Network.GameVersion, "Player", level)
 }
 
 func (s *ServerBrowserScene) fetchServers() {
@@ -165,7 +171,7 @@ func (s *ServerBrowserScene) queryMasterServer() {
 		s.mu.Unlock()
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("master server returned status %d", resp.StatusCode)
@@ -191,4 +197,9 @@ func (s *ServerBrowserScene) queryMasterServer() {
 	s.fetchedServers = servers
 	s.fetchDone = true
 	s.mu.Unlock()
+}
+
+// discoverLevelNames returns sorted stem names of all .tmx levels in embedded assets.
+func discoverLevelNames() []string {
+	return assets.NewLevelLoader().ListLevelNames()
 }

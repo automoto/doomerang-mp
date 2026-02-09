@@ -38,7 +38,7 @@ The game supports both **local offline play** and **network multiplayer** with a
 **Next Step:** Milestone 8 - Server Browser & Connection (Network Multiplayer)
 - Master server for server discovery
 - Server browser UI with favorites/recent
-- Direct connect and password protection
+- Direct connect option
 
 **Notes:**
 - Updated necs to v0.0.5 (commit 82c5928) which includes full srvsync, clisync, router, and transports
@@ -464,10 +464,10 @@ These milestones extend local play to network.
 
 ### Milestone 8: Server Browser & Connection
 
-**Goal:** Server discovery, favorites, direct connect, and password protection.
+**Goal:** Server discovery, favorites, and direct connect. Password protection is at the room/match level (see Milestone 14).
 
 ### Design
-Players can browse available servers from a master server, manually enter IP addresses, save favorites, and view recent servers. Supports password-protected private servers.
+Players can browse available servers from a master server, manually enter IP addresses, save favorites, and view recent servers.
 
 ### Server Browser UI Flow
 ```
@@ -488,7 +488,6 @@ Main Menu
             └── Direct Connect (tab)
                     ├── IP Address: [____________]
                     ├── Port: [7373___]
-                    ├── Password: [____________] (optional)
                     └── [Connect] button
 ```
 
@@ -499,7 +498,7 @@ Main Menu
 | Players | Live query | "2/4" current/max |
 | Ping | Client measured | RTT in milliseconds |
 | Region | Server config | "US-East", "EU-West", "Asia", etc. |
-| Password | Server flag | Lock icon if password required |
+| Rooms | Live query | Number of open/private rooms |
 
 ### Master Server Architecture
 ```
@@ -531,25 +530,8 @@ type ServerInfo struct {
     Region      string `json:"region"`      // Geographic region
     Players     int    `json:"players"`     // Current player count
     MaxPlayers  int    `json:"max_players"` // Max capacity
-    HasPassword bool   `json:"has_password"`// Password protected?
     GameMode    string `json:"game_mode"`   // "pvp", "coop", etc.
     Version     string `json:"version"`     // Game version for compatibility
-}
-```
-
-### Password Protection
-```go
-// Client sends password with join request
-type JoinRequest struct {
-    Password string `json:"password,omitempty"`
-}
-
-// Server validates before allowing connection
-func (s *Server) OnConnect(client *NetworkClient) {
-    if s.config.Password != "" {
-        // Wait for JoinRequest message
-        // Disconnect if wrong password
-    }
 }
 ```
 
@@ -564,7 +546,6 @@ type ServerStorage struct {
 type SavedServer struct {
     Address   string    `json:"address"`
     Name      string    `json:"name"`
-    Password  string    `json:"password,omitempty"` // Encrypted
     LastPlayed time.Time `json:"last_played"`
 }
 ```
@@ -579,7 +560,7 @@ type SavedServer struct {
 - [ ] Deploy master server (separate from game servers)
 
 **Game Server Registration:**
-- [ ] Add `--name`, `--region`, `--password` flags to game server
+- [ ] Add `--name`, `--region` flags to game server
 - [ ] Register with master server on startup
 - [ ] Send heartbeat every 30 seconds
 - [ ] Deregister on graceful shutdown
@@ -591,27 +572,19 @@ type SavedServer struct {
 - [ ] Query master server for server list
 - [ ] Ping each server for latency measurement
 - [ ] Implement region filter and hide full/empty filters
-- [ ] Show lock icon for password-protected servers
+- [ ] Show room count per server
 
 **Client Favorites & Recent:**
 - [ ] Create `storage/servers.go` - local persistence
 - [ ] Implement add/remove favorites
 - [ ] Auto-save to recent on successful join
 - [ ] Handle WASM (use localStorage instead of file)
-- [ ] Encrypt stored passwords
 
 **Client Direct Connect:**
 - [ ] IP address input field with validation
 - [ ] Port input with default (7373)
-- [ ] Password input (hidden characters)
 - [ ] Connect button with loading state
-- [ ] Error handling (connection refused, wrong password, timeout)
-
-**Password Protection:**
-- [ ] Add password config to game server
-- [ ] Implement password validation on join
-- [ ] Send appropriate error message on wrong password
-- [ ] Client prompts for password when joining protected server
+- [ ] Error handling (connection refused, timeout)
 
 ### Files to Create
 | File | Purpose |
@@ -626,8 +599,8 @@ type SavedServer struct {
 ### Files to Modify
 | File | Changes |
 |------|---------|
-| `server/cmd/server/main.go` | Add name, region, password flags |
-| `server/core/server.go` | Master server registration, password validation |
+| `server/cmd/server/main.go` | Add name, region flags |
+| `server/core/server.go` | Master server registration |
 
 ---
 
@@ -638,7 +611,7 @@ After selecting a server, client connects and receives entity state. Remote play
 
 ### Behavior
 1. Client connects to selected server WebSocket
-2. Client sends JoinRequest (with password if needed)
+2. Client sends JoinRequest (version, name)
 3. Server validates and spawns player entity
 4. Server sends world snapshot with all synced entities
 5. Client creates/updates entities from snapshot
@@ -787,23 +760,25 @@ type DeathEvent struct {
 
 ---
 
-## Milestone 13: Enemy Sync
+## Milestone 13: Bot AI Sync
+
+> **Note:** This section has been updated. Bots ARE players (with `PlayerData` + `BotData` components), not separate enemy entities. See [docs/plans/milestone13-bot-ai-sync.md](../docs/plans/milestone13-bot-ai-sync.md) for the full updated plan.
 
 ### Design
-For PvP, enemies may be optional. If included, server manages all enemy AI and syncs state.
+Server runs all bot AI and syncs bot player states to clients. Bots use `PlayerData` with `PlayerIndex`, not a separate enemy type.
 
 ### Behavior
-- Server runs enemy AI (patrol, chase, attack)
-- Enemy positions/states synced to all clients
-- Clients only render enemies (no local AI)
-- Player-enemy combat resolved on server
+- Server runs bot AI (patrol, chase, attack, retreat)
+- Bot positions/states synced as regular player entities
+- Clients only render bots (no local AI in network mode)
+- Bots use same combat system as human players
 
 ### Implementation Tasks
-- [ ] Port enemy AI to server
-- [ ] Sync enemy positions with interpolation
-- [ ] Handle enemy-player collisions on server
-- [ ] Sync enemy deaths to clients
-- [ ] Option to disable enemies in PvP mode
+- [ ] Port bot AI to `server/systems/bot.go`
+- [ ] Port pathfinding to server for A* navigation
+- [ ] Bot input applied same as player input (server-side)
+- [ ] Sync bot states with interpolation
+- [ ] Client skips bot AI in network mode
 
 ---
 
@@ -960,8 +935,8 @@ var ServerBrowser = struct {
 | `systems/player.go` | 5 | Add prediction logic |
 | `archetypes/archetypes.go` | 1 | Add network components |
 | `Makefile` | 2, 10 | Add server/wasm/master targets |
-| `server/cmd/server/main.go` | 3 | Add name, region, password flags |
-| `server/core/server.go` | 3 | Master server registration, password validation |
+| `server/cmd/server/main.go` | 3 | Add name, region flags |
+| `server/core/server.go` | 3 | Master server registration |
 
 ---
 
@@ -973,7 +948,7 @@ var ServerBrowser = struct {
 3. **M3**: Server browser shows servers from master server, can browse/filter/favorite
 3. **M3 (master)**: Master server starts, game servers register, clients query list
 3. **M3 (direct)**: Manual IP:port entry connects successfully
-3. **M3 (password)**: Password-protected server rejects wrong password, accepts correct
+3. **M14 (room password)**: Password-protected room rejects wrong password, accepts correct
 3. **M3 (storage)**: Favorites persist after restart, recent servers tracked
 4. **M3b**: Two clients connect via browser, see each other's placeholder
 5. **M4**: Movement works via server (high latency visible)

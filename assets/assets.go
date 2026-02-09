@@ -165,6 +165,24 @@ func GetFrame(dir string, state config.StateID, frameIndex int, srcRect image.Re
 	return animationLoader.GetFrame(dir, state, frameIndex, srcRect)
 }
 
+// ListLevelNames returns the sorted stem names (e.g. "level1", "arena_battle_starter")
+// of all .tmx files in assets/levels without loading or rendering them.
+func (l *LevelLoader) ListLevelNames() []string {
+	entries, err := assetFS.ReadDir("levels")
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".tmx" {
+			stem := entry.Name()[:len(entry.Name())-len(".tmx")]
+			names = append(names, stem)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 func (l *LevelLoader) MustLoadLevels() []Level {
 	entries, err := assetFS.ReadDir("levels")
 	if err != nil {

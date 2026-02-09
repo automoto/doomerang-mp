@@ -34,6 +34,8 @@ type LobbyData struct {
 	// Match settings
 	GameMode     cfg.GameModeID // FFA, 1v1, 2v2, CoopVsBots
 	MatchMinutes int            // Match duration in minutes (1-10)
+	LevelIndex   int            // Currently selected level index
+	LevelNames   []string       // Available level stem names
 
 	// UI state
 	SelectedSlot   int  // Currently selected slot (0-3)

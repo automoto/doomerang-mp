@@ -9,6 +9,10 @@ import (
 )
 
 func CreateLevel(ecs *ecs.ECS) *donburi.Entry {
+	return CreateLevelAtIndex(ecs, 0)
+}
+
+func CreateLevelAtIndex(ecs *ecs.ECS, levelIndex int) *donburi.Entry {
 	level := archetypes.Level.Spawn(ecs)
 
 	// Load all levels
@@ -19,11 +23,16 @@ func CreateLevel(ecs *ecs.ECS) *donburi.Entry {
 		panic("No levels found in assets/levels directory")
 	}
 
+	// Clamp index to valid range
+	if levelIndex < 0 || levelIndex >= len(levels) {
+		levelIndex = 0
+	}
+
 	// Set up level data
 	levelData := &components.LevelData{
 		Levels:       levels,
-		LevelIndex:   0,
-		CurrentLevel: &levels[0],
+		LevelIndex:   levelIndex,
+		CurrentLevel: &levels[levelIndex],
 	}
 
 	components.Level.Set(level, levelData)

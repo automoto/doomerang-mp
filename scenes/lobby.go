@@ -70,6 +70,7 @@ func (ls *LobbyScene) configure() {
 	// Initialize lobby data
 	ls.lobbyData = &components.LobbyData{}
 	systems.InitLobby(ls.lobbyData)
+	systems.InitLevelList(ls.lobbyData)
 
 	// Create ebitenui lobby
 	ls.lobbyUI = ui.NewLobbyUI(
@@ -91,6 +92,7 @@ func (ls *LobbyScene) startMatch() {
 		Slots:        ls.lobbyData.Slots,
 		GameMode:     ls.lobbyData.GameMode,
 		MatchMinutes: ls.lobbyData.MatchMinutes,
+		LevelIndex:   ls.lobbyData.LevelIndex,
 	}
 
 	ls.sceneChanger.ChangeScene(NewPlatformerSceneWithConfig(ls.sceneChanger, matchConfig))
@@ -101,4 +103,5 @@ type MatchConfig struct {
 	Slots        [4]components.PlayerSlot
 	GameMode     cfg.GameModeID
 	MatchMinutes int
+	LevelIndex   int
 }

@@ -54,6 +54,9 @@ func NewUpdateMenu(sceneChanger SceneChanger, createPlatformerScene func() inter
 			selectedOption := menu.VisibleOptions[menu.SelectedIndex]
 
 			switch selectedOption {
+			case components.MainMenuLocalPlay:
+				FadeOutMusic(e)
+				sceneChanger.ChangeScene(createPlatformerScene())
 			case components.MainMenuMultiplayer:
 				FadeOutMusic(e)
 				sceneChanger.ChangeScene(createServerBrowserScene())
@@ -137,6 +140,8 @@ func getMenuHint(method components.InputMethod) string {
 // getOptionLabel returns the display text for a menu option
 func getOptionLabel(option components.MainMenuOption) string {
 	switch option {
+	case components.MainMenuLocalPlay:
+		return "Local Play"
 	case components.MainMenuMultiplayer:
 		return "Multiplayer"
 	case components.MainMenuSettings:
@@ -151,8 +156,8 @@ func getOptionLabel(option components.MainMenuOption) string {
 // GetOrCreateMenu returns the singleton Menu component, creating if needed
 func GetOrCreateMenu(e *ecs.ECS) *components.MenuData {
 	if _, ok := components.Menu.First(e.World); !ok {
-		// Fixed menu options for multiplayer-only mode
 		visibleOptions := []components.MainMenuOption{
+			components.MainMenuLocalPlay,
 			components.MainMenuMultiplayer,
 			components.MainMenuSettings,
 			components.MainMenuExit,

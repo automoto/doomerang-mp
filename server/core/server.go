@@ -42,6 +42,9 @@ type Server struct {
 }
 
 func NewServer(tickRate int, name, version string, levels map[string]*ServerLevel, levelNames []string) *Server {
+	if len(levelNames) == 0 {
+		log.Fatal("NewServer: no levels provided")
+	}
 	world := donburi.NewWorld()
 
 	s := &Server{

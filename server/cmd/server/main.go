@@ -16,7 +16,7 @@ func main() {
 	tickRate := flag.Int("tickrate", 20, "Server tick rate (updates per second)")
 	name := flag.String("name", "Doomerang Server", "Server display name")
 	version := flag.String("version", "", "Required client version (empty = accept any)")
-	moveSpeed := flag.Float64("movespeed", 3.0, "Player movement speed")
+	assetsDir := flag.String("assets", "assets", "Path to assets directory")
 	master := flag.String("master", "", "Master server URL (e.g. http://localhost:8080)")
 	region := flag.String("region", "", "Server region for display")
 	maxPlayers := flag.Int("maxplayers", 4, "Maximum players")
@@ -27,11 +27,18 @@ func main() {
 		log.Fatalf("Failed to register components: %v", err)
 	}
 
-	server := core.NewServer(*tickRate, *name, *version, *moveSpeed)
+	// Load all levels from assets directory
+	levels, levelNames, err := core.LoadAllServerLevels(*assetsDir)
+	if err != nil {
+		log.Fatalf("Failed to load levels: %v", err)
+	}
+	log.Printf("Loaded %d levels: %v", len(levelNames), levelNames)
+
+	server := core.NewServer(*tickRate, *name, *version, levels, levelNames)
 
 	var reg *core.Registration
 	if *master != "" {
-		reg = core.NewRegistration(*master, *name, *address, *version, *region, *maxPlayers, server)
+		reg = core.NewRegistration(*master, *name, *address, *version, *region, *maxPlayers, levelNames, server)
 		reg.Start()
 	}
 

@@ -21,6 +21,11 @@ FROM gcr.io/distroless/static-debian12
 
 COPY --from=builder /doomerang-server /doomerang-server
 
+# Copy level assets (TMX files, tilesets) for server-side collision loading.
+# Images are referenced by tilesets but only metadata is parsed; the PNGs must
+# still exist on the filesystem for go-tiled to open them without error.
+COPY assets/levels/ /app/assets/levels/
+
 EXPOSE 7373
 
-ENTRYPOINT ["/doomerang-server"]
+ENTRYPOINT ["/doomerang-server", "--assets=/app/assets"]

@@ -32,6 +32,7 @@ type LobbyUI struct {
 	teamButtons     [4]*widget.Button // Team selection buttons
 	gameModeLabel   *widget.Label
 	matchTimeLabel  *widget.Label
+	levelLabel      *widget.Label
 	startButton     *widget.Button
 	statusLabel     *widget.Label
 
@@ -371,6 +372,48 @@ func (lui *LobbyUI) buildSettingsContainer() *widget.Container {
 
 	container.AddChild(timeRow)
 
+	// Level row
+	if len(lui.Lobby.LevelNames) > 0 {
+		levelRow := widget.NewContainer(
+			widget.ContainerOpts.Layout(widget.NewRowLayout(
+				widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
+				widget.RowLayoutOpts.Spacing(6),
+			)),
+		)
+
+		levelTitleLabel := widget.NewLabel(
+			widget.LabelOpts.Text("Level:", &lui.smallFace, &widget.LabelColor{
+				Idle: color.RGBA{255, 255, 255, 255},
+			}),
+		)
+		levelRow.AddChild(levelTitleLabel)
+
+		displayName := systems.GetLevelDisplayName(lui.Lobby.LevelNames[lui.Lobby.LevelIndex])
+		lui.levelLabel = widget.NewLabel(
+			widget.LabelOpts.Text(displayName, &lui.smallFace, &widget.LabelColor{
+				Idle: color.RGBA{255, 255, 100, 255},
+			}),
+		)
+		levelRow.AddChild(lui.levelLabel)
+
+		levelButton := widget.NewButton(
+			widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(50, 18)),
+			widget.ButtonOpts.Image(lui.buttonImage()),
+			widget.ButtonOpts.Text("Change", &lui.smallFace, &widget.ButtonTextColor{
+				Idle:    color.RGBA{200, 200, 200, 255},
+				Hover:   color.RGBA{255, 255, 255, 255},
+				Pressed: color.RGBA{150, 150, 150, 255},
+			}),
+			widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+				systems.CycleLevel(lui.Lobby)
+				lui.UpdateUI()
+			}),
+		)
+		levelRow.AddChild(levelButton)
+
+		container.AddChild(levelRow)
+	}
+
 	return container
 }
 
@@ -512,6 +555,9 @@ func (lui *LobbyUI) UpdateUI() {
 	if lui.matchTimeLabel != nil {
 		lui.matchTimeLabel.Label = fmt.Sprintf("%d min", lui.Lobby.MatchMinutes)
 	}
+	if lui.levelLabel != nil && len(lui.Lobby.LevelNames) > 0 {
+		lui.levelLabel.Label = systems.GetLevelDisplayName(lui.Lobby.LevelNames[lui.Lobby.LevelIndex])
+	}
 
 	// Update start button state
 	if lui.startButton != nil {
@@ -564,9 +610,10 @@ func (lui *LobbyUI) hasPlayersOnBothTeams() bool {
 		if slot.Type == components.SlotEmpty {
 			continue
 		}
-		if slot.Team == 0 {
+		switch slot.Team {
+		case 0:
 			team0++
-		} else if slot.Team == 1 {
+		case 1:
 			team1++
 		}
 	}

@@ -261,18 +261,6 @@ func snapToSlopeSurface(physics *components.PhysicsData, object *resolv.Object, 
 	physics.SpeedY = 0
 }
 
-// isNearRampSurface checks if the object is vertically close enough to snap to the ramp
-// This prevents characters from being teleported to distant ramps that happen to overlap horizontally
-func isNearRampSurface(object *resolv.Object, ramp *resolv.Object) bool {
-	surfaceY := getSlopeSurfaceY(object, ramp)
-	playerBottom := object.Y + object.H
-
-	// Allow snapping if feet are within 16 pixels of the ramp surface
-	// This accommodates normal movement speeds and small gaps
-	const snapTolerance = 16.0
-	return playerBottom >= surfaceY-snapTolerance && playerBottom <= surfaceY+snapTolerance
-}
-
 // getSlopeSurfaceY calculates the slope surface Y at the object's center X position
 func getSlopeSurfaceY(object *resolv.Object, ramp *resolv.Object) float64 {
 	playerCenterX := object.X + object.W/2

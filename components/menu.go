@@ -6,7 +6,8 @@ import "github.com/yohamta/donburi"
 type MainMenuOption int
 
 const (
-	MainMenuMultiplayer MainMenuOption = iota
+	MainMenuLocalPlay MainMenuOption = iota
+	MainMenuMultiplayer
 	MainMenuSettings
 	MainMenuExit
 )

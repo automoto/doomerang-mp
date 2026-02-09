@@ -47,6 +47,7 @@ func (g *GameLoop) Stop() {
 
 func (g *GameLoop) tick() {
 	g.server.ProcessCommands()
+	g.server.updatePhysics()
 
 	if err := srvsync.DoSync(); err != nil {
 		log.Printf("Sync error: %v", err)
