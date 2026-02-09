@@ -1,4 +1,34 @@
 services:
+  # --- Game server for multiplayer testing ---
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "7373:7373"
+    command:
+      - "--port=7373"
+      - "--tickrate=20"
+      - "--name=Test Server"
+      - "--version=0.1.0"
+    restart: unless-stopped
+
+  # Same server with no version check (accepts any client)
+  server-no-version:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "7374:7374"
+    command:
+      - "--port=7374"
+      - "--tickrate=20"
+      - "--name=Open Server"
+    restart: unless-stopped
+    profiles:
+      - testing
+
+  # --- Cross-compilation (existing) ---
   build-linux:
     image: golang:trixie
     working_dir: /app
@@ -9,6 +39,8 @@ services:
     environment:
       - GOOS=linux
       - GOARCH=amd64
+    profiles:
+      - build
 
 volumes:
   go-cache:

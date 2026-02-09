@@ -51,12 +51,17 @@ func (ms *MenuScene) configure() {
 		return NewLobbyScene(ms.sceneChanger)
 	}
 
+	// Create server browser scene factory
+	createServerBrowserScene := func() interface{} {
+		return NewServerBrowserScene(ms.sceneChanger)
+	}
+
 	// Audio system (runs first to initialize audio context)
 	ms.ecs.AddSystem(systems.UpdateAudio)
 
 	// Minimal systems for menu
 	ms.ecs.AddSystem(systems.UpdateInput)
-	ms.ecs.AddSystem(systems.NewUpdateMenu(ms.sceneChanger, createLobbyScene))
+	ms.ecs.AddSystem(systems.NewUpdateMenu(ms.sceneChanger, createLobbyScene, createServerBrowserScene))
 	ms.ecs.AddSystem(systems.UpdateSettingsMenu)
 
 	// Renderers (settings draws on top of menu)

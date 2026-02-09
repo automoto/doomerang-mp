@@ -7,7 +7,6 @@ import (
 	"github.com/leap-fish/necs/esync/srvsync"
 )
 
-// GameLoop runs the server game loop at a fixed tick rate
 type GameLoop struct {
 	server   *Server
 	tickRate int
@@ -15,7 +14,6 @@ type GameLoop struct {
 	stopChan chan struct{}
 }
 
-// NewGameLoop creates a new game loop
 func NewGameLoop(server *Server, tickRate int) *GameLoop {
 	return &GameLoop{
 		server:   server,
@@ -24,11 +22,9 @@ func NewGameLoop(server *Server, tickRate int) *GameLoop {
 	}
 }
 
-// Run starts the game loop
 func (g *GameLoop) Run() {
 	g.running = true
-	tickDuration := time.Second / time.Duration(g.tickRate)
-	ticker := time.NewTicker(tickDuration)
+	ticker := time.NewTicker(time.Second / time.Duration(g.tickRate))
 	defer ticker.Stop()
 
 	log.Printf("Game loop started at %d ticks/second", g.tickRate)
@@ -45,23 +41,14 @@ func (g *GameLoop) Run() {
 	}
 }
 
-// Stop signals the game loop to stop
 func (g *GameLoop) Stop() {
 	close(g.stopChan)
 }
 
-// tick performs one game tick
 func (g *GameLoop) tick() {
-	// Process game systems here
-	// TODO: Add physics, combat, enemy AI, etc.
+	g.server.ProcessCommands()
 
-	// Sync world state to all clients
 	if err := srvsync.DoSync(); err != nil {
 		log.Printf("Sync error: %v", err)
 	}
-}
-
-// IsRunning returns whether the loop is currently running
-func (g *GameLoop) IsRunning() bool {
-	return g.running
 }

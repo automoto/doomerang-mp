@@ -23,7 +23,7 @@ type PlatformerSceneCreator interface {
 }
 
 // NewUpdateMenu creates an UpdateMenu system with scene transition capability
-func NewUpdateMenu(sceneChanger SceneChanger, createPlatformerScene func() interface{}) ecs.System {
+func NewUpdateMenu(sceneChanger SceneChanger, createPlatformerScene func() interface{}, createServerBrowserScene func() interface{}) ecs.System {
 	return func(e *ecs.ECS) {
 		// Skip menu input if settings is open
 		if IsSettingsOpen(e) {
@@ -55,10 +55,8 @@ func NewUpdateMenu(sceneChanger SceneChanger, createPlatformerScene func() inter
 
 			switch selectedOption {
 			case components.MainMenuMultiplayer:
-				// Placeholder - multiplayer coming soon
-				// For now, just start the game for testing
 				FadeOutMusic(e)
-				sceneChanger.ChangeScene(createPlatformerScene())
+				sceneChanger.ChangeScene(createServerBrowserScene())
 			case components.MainMenuSettings:
 				OpenSettings(e, false)
 			case components.MainMenuExit:

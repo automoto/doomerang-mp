@@ -8,6 +8,7 @@ import (
 	"github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/fonts"
 	"github.com/automoto/doomerang-mp/scenes"
+	"github.com/automoto/doomerang-mp/shared/protocol"
 	"github.com/automoto/doomerang-mp/systems"
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -72,6 +73,11 @@ func main() {
 	// 		log.Printf("pprof server error: %v", err)
 	// 	}
 	// }()
+
+	// Register network components for client-side deserialization
+	if err := protocol.RegisterComponents(); err != nil {
+		log.Fatalf("Failed to register network components: %v", err)
+	}
 
 	ebiten.SetWindowSize(config.C.Width, config.C.Height)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeOnlyFullscreenEnabled)

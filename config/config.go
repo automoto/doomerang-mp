@@ -380,6 +380,15 @@ type LevelCompleteConfig struct {
 	ContinueHint string
 }
 
+// NetworkConfig contains network/multiplayer configuration
+type NetworkConfig struct {
+	DefaultPort    string
+	DefaultAddress string
+	ConnectTimeout int
+	GameVersion    string
+	MoveSpeed      float64
+}
+
 // Config holds general game configuration
 type Config struct {
 	Width  int
@@ -408,6 +417,7 @@ var Message MessageConfig
 var LevelComplete LevelCompleteConfig
 var Camera CameraConfig
 var Match MatchConfig
+var Network NetworkConfig
 var Pathfinding PathfindingConfig
 var BotCombat BotCombatConfig
 
@@ -933,5 +943,14 @@ func init() {
 		BoomerangMinRange: 80.0,  // Min distance for boomerang throw
 		BoomerangMaxRange: 300.0, // Max distance for boomerang throw
 		ApproachMinRange:  50.0,  // Min distance before approaching
+	}
+
+	// Network Config
+	Network = NetworkConfig{
+		DefaultPort:    "7373",
+		DefaultAddress: "localhost",
+		ConnectTimeout: 60 * 5,
+		GameVersion:    "0.1.0",
+		MoveSpeed:      3.0,
 	}
 }

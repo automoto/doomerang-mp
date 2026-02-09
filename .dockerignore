@@ -1,0 +1,9 @@
+dist/
+*.exe
+*.test
+*.out
+.git/
+.idea/
+.vscode/
+plans/
+docs/

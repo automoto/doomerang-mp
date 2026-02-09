@@ -1,130 +1,69 @@
 package config
 
-type StateID int
+import "github.com/automoto/doomerang-mp/shared/netconfig"
 
-// MatchStateID represents the current state of a match
-type MatchStateID int
+// Type aliases — all existing client code using config.StateID etc. keeps working.
+type StateID = netconfig.StateID
+type MatchStateID = netconfig.MatchStateID
 
+// Re-export match state constants.
 const (
-	MatchStateWaiting   MatchStateID = iota // Waiting for players/setup
-	MatchStateCountdown                     // Pre-match countdown (3, 2, 1)
-	MatchStatePlaying                       // Active gameplay
-	MatchStateFinished                      // Match over, showing results
+	MatchStateWaiting   = netconfig.MatchStateWaiting
+	MatchStateCountdown = netconfig.MatchStateCountdown
+	MatchStatePlaying   = netconfig.MatchStatePlaying
+	MatchStateFinished  = netconfig.MatchStateFinished
 )
 
+// Re-export character/entity state constants.
 const (
-	StateNone StateID = -1
+	StateNone = netconfig.StateNone
 
-	// Character animation states
-	Idle StateID = iota
-	Crouch
-	Die
-	Guard
-	GuardImpact
-	Hit
-	Jump
-	Kick01
-	Kick02
-	Kick03
-	Knockback
-	Ledge
-	LedgeGrab
-	Punch01
-	Punch02
-	Punch03
-	Running
-	Stunned
-	Throw
-	Walk
-	WallSlide
+	Idle        = netconfig.Idle
+	Crouch      = netconfig.Crouch
+	Die         = netconfig.Die
+	Guard       = netconfig.Guard
+	GuardImpact = netconfig.GuardImpact
+	Hit         = netconfig.Hit
+	Jump        = netconfig.Jump
+	Kick01      = netconfig.Kick01
+	Kick02      = netconfig.Kick02
+	Kick03      = netconfig.Kick03
+	Knockback   = netconfig.Knockback
+	Ledge       = netconfig.Ledge
+	LedgeGrab   = netconfig.LedgeGrab
+	Punch01     = netconfig.Punch01
+	Punch02     = netconfig.Punch02
+	Punch03     = netconfig.Punch03
+	Running     = netconfig.Running
+	Stunned     = netconfig.Stunned
+	Throw       = netconfig.Throw
+	Walk        = netconfig.Walk
+	WallSlide   = netconfig.WallSlide
 
-	// Combat specific states
-	StateAttackingPunch
-	StateAttackingKick
-	StateChargingAttack
-	StateAttackingJump
-	StateChargingBoomerang
+	StateAttackingPunch    = netconfig.StateAttackingPunch
+	StateAttackingKick     = netconfig.StateAttackingKick
+	StateChargingAttack    = netconfig.StateChargingAttack
+	StateAttackingJump     = netconfig.StateAttackingJump
+	StateChargingBoomerang = netconfig.StateChargingBoomerang
 
-	// Movement states
-	StateSliding
+	StateSliding = netconfig.StateSliding
 
-	// Enemy AI states
-	StatePatrol
-	StateChase
-	StateApproachEdge
+	StatePatrol       = netconfig.StatePatrol
+	StateChase        = netconfig.StateChase
+	StateApproachEdge = netconfig.StateApproachEdge
 
-	// VFX states (dust and impact effects)
-	StateJumpDust
-	StateLandDust
-	StateSlideDust
-	StateExplosionShort
-	StatePlasma
-	StateGunshot
-	HitExplosion
-	ChargeUp
+	StateJumpDust       = netconfig.StateJumpDust
+	StateLandDust       = netconfig.StateLandDust
+	StateSlideDust      = netconfig.StateSlideDust
+	StateExplosionShort = netconfig.StateExplosionShort
+	StatePlasma         = netconfig.StatePlasma
+	StateGunshot        = netconfig.StateGunshot
+	HitExplosion        = netconfig.HitExplosion
+	ChargeUp            = netconfig.ChargeUp
 
-	// Fire obstacle states
-	FirePulsing
-	FireContinuous
+	FirePulsing    = netconfig.FirePulsing
+	FireContinuous = netconfig.FireContinuous
 )
 
-// StateToFileName maps StateID to the corresponding filename prefix.
-var StateToFileName = map[StateID]string{
-	Idle:        "idle",
-	Crouch:      "crouch",
-	Die:         "die",
-	Guard:       "guard",
-	GuardImpact: "guardimpact",
-	Hit:         "hit",
-	Jump:        "jump",
-	Kick01:      "kick01",
-	Kick02:      "kick02",
-	Kick03:      "kick03",
-	Knockback:   "knockback",
-	Ledge:       "ledge",
-	LedgeGrab:   "ledgegrab",
-	Punch01:     "punch01",
-	Punch02:     "punch02",
-	Punch03:     "punch03",
-	Running:     "running",
-	Stunned:     "stunned",
-	Throw:       "throw",
-	Walk:        "walk",
-	WallSlide:   "wallslide",
-
-	// Map combat states to animation files where appropriate
-	StateAttackingPunch:    "punch01",
-	StateAttackingKick:     "kick01",
-	StateAttackingJump:     "kick02", // Jump kick uses kick02 animation
-	StateChargingAttack:    "idle",   // Charging uses idle animation (or maybe a specific one later)
-	StateChargingBoomerang: "throw",  // Use throw animation frame 0 for charging
-
-	// Movement states
-	StateSliding: "slide", // Custom slide animation
-
-	// Enemy AI states map to movement animations
-	StatePatrol:       "walk",
-	StateChase:        "running",
-	StateApproachEdge: "walk",
-
-	// VFX states map to effect sprite files
-	StateJumpDust:       "jumpdust",
-	StateLandDust:       "landingdust",
-	StateSlideDust:      "slidedust",
-	StateExplosionShort: "explosion_short",
-	StatePlasma:         "plasma",
-	StateGunshot:        "gunshot_rifle",
-	HitExplosion:        "explosion",
-	ChargeUp:            "level_up",
-
-	// Fire obstacle sprites
-	FirePulsing:    "flames_pulse",
-	FireContinuous: "flame_continuous",
-}
-
-func (s StateID) String() string {
-	if name, ok := StateToFileName[s]; ok {
-		return name
-	}
-	return "unknown"
-}
+// Re-export the map (same reference, no copy).
+var StateToFileName = netconfig.StateToFileName
