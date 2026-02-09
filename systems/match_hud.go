@@ -8,7 +8,7 @@ import (
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/fonts"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text"
+	"github.com/hajimehoshi/ebiten/v2/text" //nolint:staticcheck // TODO: migrate to text/v2
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/yohamta/donburi/ecs"
 )
@@ -51,7 +51,7 @@ func drawMatchTimer(screen *ebiten.Image, match *components.MatchData) {
 	timerX := float32(width/2) - timerWidth/2
 	timerY := float32(5)
 
-	vector.DrawFilledRect(screen, timerX, timerY, timerWidth, timerHeight,
+	vector.FillRect(screen, timerX, timerY, timerWidth, timerHeight,
 		color.RGBA{0, 0, 0, 180}, false)
 
 	// Draw timer text centered
@@ -88,7 +88,7 @@ func drawCountdown(screen *ebiten.Image, match *components.MatchData) {
 	fontFace := fonts.ExcelTitle.Get()
 
 	// Semi-transparent overlay
-	vector.DrawFilledRect(screen, 0, 0, float32(width), float32(height),
+	vector.FillRect(screen, 0, 0, float32(width), float32(height),
 		color.RGBA{0, 0, 0, 120}, false)
 
 	// Countdown text
@@ -120,7 +120,7 @@ func drawMatchResults(screen *ebiten.Image, match *components.MatchData) {
 	titleFont := fonts.ExcelTitle.Get()
 
 	// Full overlay
-	vector.DrawFilledRect(screen, 0, 0, float32(width), float32(height),
+	vector.FillRect(screen, 0, 0, float32(width), float32(height),
 		color.RGBA{0, 0, 0, 200}, false)
 
 	// Title

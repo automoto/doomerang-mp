@@ -592,9 +592,9 @@ func detectGapAhead(space *resolv.Space, obj *components.ObjectData, movingRight
 	maxScanDist := cfg.Pathfinding.MaxJumpDistance
 	scanStep := cfg.Pathfinding.LOSStepSize
 
-	startX := obj.X + obj.W/2
 	startY := obj.Y + obj.H
 
+	var startX float64
 	if movingRight {
 		startX = obj.X + obj.W + checkDist
 	} else {

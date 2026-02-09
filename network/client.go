@@ -34,6 +34,7 @@ type Client struct {
 	reconnectToken string
 	serverName     string
 	tickRate       int
+	level          string
 	conn           *websocket.Conn
 
 	snapshotCh chan esync.WorldSnapshot // size-1 buffered; latest wins
@@ -47,7 +48,7 @@ func NewClient() *Client {
 }
 
 // Connect dials the server in a background goroutine and initiates the join handshake.
-func (c *Client) Connect(address, version, playerName string) {
+func (c *Client) Connect(address, version, playerName, level string) {
 	c.mu.Lock()
 	c.state = StateConnecting
 	c.lastError = nil
@@ -62,6 +63,7 @@ func (c *Client) Connect(address, version, playerName string) {
 		payload, err := router.Serialize(messages.JoinRequest{
 			Version:    version,
 			PlayerName: playerName,
+			Level:      level,
 		})
 		if err != nil {
 			c.setError(fmt.Errorf("failed to serialize join request: %w", err))
@@ -87,6 +89,7 @@ func (c *Client) Connect(address, version, playerName string) {
 		c.reconnectToken = msg.ReconnectToken
 		c.serverName = msg.ServerName
 		c.tickRate = msg.TickRate
+		c.level = msg.Level
 		c.state = StateJoinedGame
 		c.mu.Unlock()
 	})
@@ -139,7 +142,7 @@ func (c *Client) Disconnect() {
 	c.mu.Unlock()
 
 	if conn != nil {
-		conn.CloseNow()
+		_ = conn.CloseNow()
 	}
 
 	router.ResetRouter()
@@ -161,6 +164,12 @@ func (c *Client) NetworkID() esync.NetworkId {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.networkID
+}
+
+func (c *Client) Level() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.level
 }
 
 // LatestSnapshot returns the most recent WorldSnapshot, or nil. Non-blocking.

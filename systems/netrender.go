@@ -9,7 +9,7 @@ import (
 	"github.com/automoto/doomerang-mp/fonts"
 	"github.com/automoto/doomerang-mp/shared/netcomponents"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text"
+	"github.com/hajimehoshi/ebiten/v2/text" //nolint:staticcheck // TODO: migrate to text/v2
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/leap-fish/necs/esync"
 	"github.com/yohamta/donburi"
@@ -46,13 +46,13 @@ func DrawNetworkedPlayers(e *ecs.ECS, screen *ebiten.Image) {
 
 		x := float32(pos.X) - playerWidth/2
 		y := float32(pos.Y) - playerHeight
-		vector.DrawFilledRect(screen, x, y, playerWidth, playerHeight, rectColor, false)
+		vector.FillRect(screen, x, y, playerWidth, playerHeight, rectColor, false)
 
 		if state != nil {
 			cx := float32(pos.X)
 			cy := float32(pos.Y) - playerHeight/2
 			dir := float32(state.Direction) * 6
-			vector.DrawFilledRect(screen, cx+dir-2, cy-2, 4, 4, cfg.White, false)
+			vector.FillRect(screen, cx+dir-2, cy-2, 4, 4, cfg.White, false)
 		}
 
 		if nid := esync.GetNetworkId(entry); nid != nil {

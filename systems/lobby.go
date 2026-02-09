@@ -321,11 +321,12 @@ func AutoAssignTeams(lobby *components.LobbyData) {
 	case cfg.GameModeCoopVsBots:
 		// Humans = Team 0, Bots = Team 1
 		for i := range lobby.Slots {
-			if lobby.Slots[i].Type == components.SlotHuman {
+			switch lobby.Slots[i].Type {
+			case components.SlotHuman:
 				lobby.Slots[i].Team = 0
-			} else if lobby.Slots[i].Type == components.SlotBot {
+			case components.SlotBot:
 				lobby.Slots[i].Team = 1
-			} else {
+			default:
 				lobby.Slots[i].Team = -1
 			}
 		}

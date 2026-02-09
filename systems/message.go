@@ -9,7 +9,7 @@ import (
 	"github.com/automoto/doomerang-mp/fonts"
 	"github.com/automoto/doomerang-mp/tags"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text"
+	"github.com/hajimehoshi/ebiten/v2/text" //nolint:staticcheck // TODO: migrate to text/v2
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"
@@ -87,7 +87,7 @@ func DrawMessage(ecs *ecs.ECS, screen *ebiten.Image) {
 	}
 
 	// Measure text
-	bounds := text.BoundString(messageFontFace, resolvedText)
+	bounds := text.BoundString(messageFontFace, resolvedText) //nolint:staticcheck // TODO: migrate to text/v2
 	textWidth := bounds.Dx()
 	textHeight := bounds.Dy()
 
@@ -102,7 +102,7 @@ func DrawMessage(ecs *ecs.ECS, screen *ebiten.Image) {
 	boxY := float32(cfg.Message.TopMargin)
 
 	// Draw semi-transparent background box
-	vector.DrawFilledRect(
+	vector.FillRect(
 		screen,
 		boxX, boxY,
 		boxWidth, boxHeight,

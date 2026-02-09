@@ -54,13 +54,13 @@ func DrawHUD(ecs *ecs.ECS, screen *ebiten.Image) {
 		playerColor := cfg.PlayerColors.Colors[playerIndex%len(cfg.PlayerColors.Colors)].RGBA
 
 		// Background (dark gray)
-		vector.DrawFilledRect(screen, x, y,
+		vector.FillRect(screen, x, y,
 			hudBarWidth, hudBarHeight,
 			color.RGBA{40, 40, 40, 255}, false)
 
 		// Current HP (player color)
 		ratio := float32(hp.Current) / float32(hp.Max)
-		vector.DrawFilledRect(screen, x, y,
+		vector.FillRect(screen, x, y,
 			hudBarWidth*ratio, hudBarHeight,
 			playerColor, false)
 

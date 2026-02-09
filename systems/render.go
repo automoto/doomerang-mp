@@ -232,7 +232,7 @@ func DrawAnimated(ecs *ecs.ECS, screen *ebiten.Image) {
 			screenY := (o.Y-camera.Position.Y)*zoom + float64(height)/2
 
 			// This debug draw doesn't need to be camera-aware, as it's for debugging.
-			vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(o.W*zoom), float32(o.H*zoom), entityColor, false)
+			vector.FillRect(screen, float32(screenX), float32(screenY), float32(o.W*zoom), float32(o.H*zoom), entityColor, false)
 		}
 	})
 }
@@ -292,10 +292,10 @@ func DrawHealthBars(ecs *ecs.ECS, screen *ebiten.Image) {
 		barHeightScaled := barHeight * zoom
 
 		// Draw the background of the health bar (red)
-		vector.DrawFilledRect(screen, float32(drawX), float32(drawY), float32(barWidthScaled), float32(barHeightScaled), cfg.Red, false)
+		vector.FillRect(screen, float32(drawX), float32(drawY), float32(barWidthScaled), float32(barHeightScaled), cfg.Red, false)
 
 		// Draw the foreground of the health bar (green)
-		vector.DrawFilledRect(screen, float32(drawX), float32(drawY), float32(barWidthScaled*healthPercentage), float32(barHeightScaled), cfg.Green, false)
+		vector.FillRect(screen, float32(drawX), float32(drawY), float32(barWidthScaled*healthPercentage), float32(barHeightScaled), cfg.Green, false)
 	})
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/automoto/doomerang-mp/shared/messages"
 	"github.com/automoto/doomerang-mp/shared/netcomponents"
+	"github.com/automoto/doomerang-mp/shared/netconfig"
 	"github.com/leap-fish/necs/esync"
 	"github.com/leap-fish/necs/esync/srvsync"
 	"github.com/leap-fish/necs/router"
@@ -23,9 +24,15 @@ type Server struct {
 	loop      *GameLoop
 	transport *transports.WsServerTransport
 
-	name      string
-	version   string
-	moveSpeed float64
+	name    string
+	version string
+
+	levels      map[string]*ServerLevel
+	levelNames  []string
+	activeLevel *ServerLevel
+	activeName  string
+
+	playerPhysics map[donburi.Entity]*PlayerPhysics
 
 	clientEntities map[*router.NetworkClient]donburi.Entity
 	pendingClients map[*router.NetworkClient]bool
@@ -34,14 +41,18 @@ type Server struct {
 	cmdCh chan serverCmd
 }
 
-func NewServer(tickRate int, name, version string, moveSpeed float64) *Server {
+func NewServer(tickRate int, name, version string, levels map[string]*ServerLevel, levelNames []string) *Server {
 	world := donburi.NewWorld()
 
 	s := &Server{
 		world:          world,
 		name:           name,
 		version:        version,
-		moveSpeed:      moveSpeed,
+		levels:         levels,
+		levelNames:     levelNames,
+		activeLevel:    levels[levelNames[0]],
+		activeName:     levelNames[0],
+		playerPhysics:  make(map[donburi.Entity]*PlayerPhysics),
 		clientEntities: make(map[*router.NetworkClient]donburi.Entity),
 		pendingClients: make(map[*router.NetworkClient]bool),
 		cmdCh:          make(chan serverCmd, 64),
@@ -52,6 +63,11 @@ func NewServer(tickRate int, name, version string, moveSpeed float64) *Server {
 	s.setupRouterCallbacks()
 
 	return s
+}
+
+// LevelNames returns the sorted list of available level names.
+func (s *Server) LevelNames() []string {
+	return s.levelNames
 }
 
 func (s *Server) Start(port uint) error {
@@ -131,12 +147,28 @@ func (s *Server) onJoinRequest(client *router.NetworkClient, req messages.JoinRe
 	}
 
 	s.cmdCh <- func() {
+		// Switch active level if requested and no players connected yet
+		if req.Level != "" && len(s.clientEntities) == 0 {
+			if lvl, ok := s.levels[req.Level]; ok {
+				s.activeLevel = lvl
+				s.activeName = req.Level
+				log.Printf("Switched active level to %q", req.Level)
+			}
+		}
 		s.spawnPlayer(client, req)
 	}
 }
 
 // spawnPlayer must be called on the game loop goroutine.
 func (s *Server) spawnPlayer(client *router.NetworkClient, req messages.JoinRequest) {
+	// Pick spawn point round-robin by player count
+	spawnX, spawnY := 100.0, 100.0
+	if len(s.activeLevel.SpawnPoints) > 0 {
+		idx := len(s.clientEntities) % len(s.activeLevel.SpawnPoints)
+		sp := s.activeLevel.SpawnPoints[idx]
+		spawnX, spawnY = sp.X, sp.Y
+	}
+
 	entity := s.world.Create(
 		netcomponents.NetPosition,
 		netcomponents.NetVelocity,
@@ -144,12 +176,16 @@ func (s *Server) spawnPlayer(client *router.NetworkClient, req messages.JoinRequ
 	)
 
 	entry := s.world.Entry(entity)
-	netcomponents.NetPosition.Set(entry, &netcomponents.NetPositionData{X: 100, Y: 100})
+	netcomponents.NetPosition.Set(entry, &netcomponents.NetPositionData{X: spawnX, Y: spawnY})
 	netcomponents.NetVelocity.Set(entry, &netcomponents.NetVelocityData{})
 	netcomponents.NetPlayerState.Set(entry, &netcomponents.NetPlayerStateData{
 		Direction: 1,
 		Health:    100,
 	})
+
+	// Create server-side physics for this player
+	pp := newPlayerPhysics(s.activeLevel, spawnX, spawnY)
+	s.playerPhysics[entity] = pp
 
 	// NOTE: Do not use WithInterp — InterpData is unregistered with esync.Mapper,
 	// causing buildEntityState to silently skip the entire entity.
@@ -180,6 +216,8 @@ func (s *Server) spawnPlayer(client *router.NetworkClient, req messages.JoinRequ
 		ReconnectToken: reconnectToken,
 		ServerName:     s.name,
 		TickRate:       s.loop.tickRate,
+		Level:          s.activeName,
+		Levels:         s.levelNames,
 	})
 
 	log.Printf("Player %q joined as entity networkID=%d (client %s)",
@@ -206,6 +244,10 @@ func (s *Server) onDisconnect(client *router.NetworkClient, err error) {
 	}
 
 	s.cmdCh <- func() {
+		if pp, ok := s.playerPhysics[entity]; ok {
+			removePlayerPhysics(s.activeLevel, pp)
+			delete(s.playerPhysics, entity)
+		}
 		if s.world.Valid(entity) {
 			s.world.Remove(entity)
 			log.Printf("Player entity removed for client %s", client.Id())
@@ -223,23 +265,18 @@ func (s *Server) onPlayerInput(client *router.NetworkClient, input messages.Play
 	}
 
 	s.cmdCh <- func() {
-		if !s.world.Valid(entity) {
+		pp, ok := s.playerPhysics[entity]
+		if !ok {
 			return
 		}
+		pp.Direction = input.Direction
+		pp.JumpPressed = input.Actions[netconfig.ActionJump]
 
-		entry := s.world.Entry(entity)
-		pos := netcomponents.NetPosition.Get(entry)
-		vel := netcomponents.NetVelocity.Get(entry)
-		state := netcomponents.NetPlayerState.Get(entry)
-
-		if input.Direction != 0 {
-			vel.SpeedX = float64(input.Direction) * s.moveSpeed
+		// Update facing direction in NetPlayerState
+		if input.Direction != 0 && s.world.Valid(entity) {
+			entry := s.world.Entry(entity)
+			state := netcomponents.NetPlayerState.Get(entry)
 			state.Direction = input.Direction
-		} else {
-			vel.SpeedX = 0
 		}
-
-		pos.X += vel.SpeedX
-		pos.Y += vel.SpeedY
 	}
 }

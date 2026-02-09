@@ -17,6 +17,7 @@ type Registration struct {
 	address    string
 	version    string
 	region     string
+	levels     []string
 	maxPlayers int
 	server     *Server
 	client     *http.Client
@@ -24,12 +25,13 @@ type Registration struct {
 }
 
 type regRequest struct {
-	Name       string `json:"name"`
-	Address    string `json:"address"`
-	Players    int    `json:"players"`
-	MaxPlayers int    `json:"maxPlayers"`
-	Version    string `json:"version"`
-	Region     string `json:"region"`
+	Name       string   `json:"name"`
+	Address    string   `json:"address"`
+	Players    int      `json:"players"`
+	MaxPlayers int      `json:"maxPlayers"`
+	Version    string   `json:"version"`
+	Region     string   `json:"region"`
+	Levels     []string `json:"levels"`
 }
 
 type regResponse struct {
@@ -41,13 +43,14 @@ type heartbeatRequest struct {
 	Players int    `json:"players"`
 }
 
-func NewRegistration(masterURL, name, address, version, region string, maxPlayers int, server *Server) *Registration {
+func NewRegistration(masterURL, name, address, version, region string, maxPlayers int, levels []string, server *Server) *Registration {
 	return &Registration{
 		masterURL:  masterURL,
 		name:       name,
 		address:    address,
 		version:    version,
 		region:     region,
+		levels:     levels,
 		maxPlayers: maxPlayers,
 		server:     server,
 		client:     &http.Client{Timeout: 5 * time.Second},
@@ -74,6 +77,7 @@ func (r *Registration) register() error {
 		MaxPlayers: r.maxPlayers,
 		Version:    r.version,
 		Region:     r.region,
+		Levels:     r.levels,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)

@@ -75,7 +75,7 @@ func UpdateCamera(e *ecs.ECS) {
 	screenHeight := float64(config.C.Height)
 
 	// Calculate dynamic zoom to fit ALL players (2, 3, or 4)
-	var targetZoom float64 = config.Camera.MaxZoom
+	targetZoom := config.Camera.MaxZoom
 	if playerCount > 1 {
 		// Bounding box already includes ALL players from the loop above
 		playerSpreadX := maxPlayerX - minPlayerX + config.Camera.ZoomMargin*2
