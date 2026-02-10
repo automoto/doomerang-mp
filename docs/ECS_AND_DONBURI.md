@@ -21,14 +21,25 @@ ECS is a software architectural pattern primarily used in game development. It f
 ## Project Structure
 
 ```
-/components        Data-only structures
-/systems           Game logic (Update functions)
-/systems/factory   Entity creation functions
-/archetypes        Pre-defined component bundles
-/tags              Entity and collision tags
-/config            Global constants and configuration
-/scenes            Game state management
-/assets            Tiled maps, spritesheets, audio
+/components          Data-only structures (local game components)
+/systems             Game logic (Update functions)
+/systems/factory     Entity creation functions
+/archetypes          Pre-defined component bundles
+/tags                Entity and collision tags
+/config              Global constants and configuration
+/scenes              Game scenes (menu, lobby, world, networked, serverbrowser)
+/assets              Tiled maps, spritesheets, audio, shaders
+/ui                  ebitenui widget layouts
+/network             Client-side networking (WebSocket client, prediction buffer)
+/server              Dedicated game server (core/, cmd/)
+/shared              Code shared between client and server
+/shared/messages     Network message types
+/shared/netcomponents Network-synced ECS components
+/shared/netconfig    Shared enums (ActionID, StateID for network)
+/shared/leveldata    TMX level parser (used by both client and server)
+/shared/protocol     necs component registration
+/fonts               Font management
+/mathutil            Math utilities
 ```
 
 ---
@@ -45,8 +56,13 @@ type PlayerData struct {
     Direction           Vector         // Facing direction
     ComboCounter        int            // Punch/kick sequences
     InvulnFrames        int            // Invulnerability timer
+    BoomerangChargeTime int            // Charge time for boomerang throw
     ActiveBoomerang     *donburi.Entry // Currently thrown boomerang
-    // ...
+    ChargeVFX           *donburi.Entry // VFX shown while charging boomerang
+    LastSafeX           float64        // Last grounded position (for respawn)
+    LastSafeY           float64
+    OriginalSpawnX      float64        // Spawn point assigned at match start
+    OriginalSpawnY      float64
 }
 ```
 
@@ -63,10 +79,12 @@ The `MatchData` component is a singleton that tracks the current match state:
 type MatchData struct {
     State          MatchStateID   // Countdown, Playing, Finished
     GameMode       GameModeID     // FFA, 1v1, 2v2, CoopVsBots
-    Timer          int            // Match timer (frames remaining)
+    Timer          int            // Countdown or match timer (frames remaining)
+    Duration       int            // Total match duration (frames)
     Scores         []PlayerScore  // Per-player statistics
     WinnerIndex    int            // Winner (-1 = no winner, -2 = tie)
-    WinningTeam    int            // For team modes
+    WinningTeam    int            // For team modes (-1 if N/A)
+    CountdownValue int            // Current countdown number (3, 2, 1, GO)
 }
 
 type PlayerScore struct {
@@ -76,6 +94,8 @@ type PlayerScore struct {
     Team        int  // 0 or 1 for team modes, -1 for FFA
 }
 ```
+
+Methods: `GetPlayerScore()`, `AddKO()`, `AddDeath()`, `GetLeader()`, `GetTeamScore()`
 
 ### Damage Event Component
 
@@ -213,12 +233,22 @@ States are defined in `config/states.go`. Never use string comparisons for state
 
 ### Input Abstraction
 
-Input is decoupled from raw polling via `InputData`:
+Input is decoupled from raw polling via `InputData` (global) and `PlayerInputData` (per-player):
 
 ```go
 type InputData struct {
-    Current  [cfg.ActionCount]bool  // This frame
-    Previous [cfg.ActionCount]bool  // Last frame
+    Current         [cfg.ActionCount]bool  // This frame
+    Previous        [cfg.ActionCount]bool  // Last frame
+    LastInputMethod InputMethod            // Keyboard, Xbox, PlayStation
+}
+
+type PlayerInputData struct {
+    PlayerIndex    int                     // 0-3 player index
+    CurrentInput   [cfg.ActionCount]bool
+    PreviousInput  [cfg.ActionCount]bool
+    BoundGamepadID *ebiten.GamepadID       // Bound gamepad (nil = keyboard)
+    ControlScheme  cfg.ControlSchemeID     // Scheme A or B
+    InputMethod    InputMethod
 }
 
 // Usage in systems:
@@ -227,24 +257,72 @@ if systems.GetAction(input, cfg.ActionJump).JustPressed { ... }
 
 **Never** call `ebiten.IsKeyPressed()` directly in game systems.
 
+**Exception**: `systems/netinput.go` polls input directly because it sends raw input to the server as `PlayerInput` messages, bypassing the local ECS input pipeline.
+
 ---
 
 ## System Execution Order
 
+### Local Game (scenes/world.go)
+
 Systems run in a specific order each frame:
 
-1. **UpdateInput** - Polls raw input, populates InputData
-2. **UpdateMatch** - Match timer, state transitions
-3. **UpdatePlayer** - Player state machine, movement intent
-4. **UpdateBot** - AI decision making (generates input)
-5. **UpdateCombatHitboxes** - Creates/updates attack hitboxes
-6. **UpdateBoomerang** - Projectile physics and collision
-7. **UpdateCombat** - Processes DamageEvents, applies damage
-8. **UpdatePhysics** - Movement, gravity, collision resolution
-9. **UpdateDeath** - Death timers, respawn logic
-10. **UpdateCamera** - Follow players, dynamic zoom
+```
+Always run:
+ 1. UpdateAudio           - Music and sound effects
+ 2. UpdateInput           - Polls raw input, populates InputData
+ 3. UpdateBots            - AI decision making (generates input)
+ 4. UpdateMultiPlayerInput - Merges per-player input from gamepads/keyboard
+ 5. UpdatePause           - Pause menu handling
 
-**Critical**: `UpdateCombat` must run after hitbox/boomerang systems so `DamageEvent` components exist when processed.
+Gameplay systems (paused when game is paused):
+ 6. UpdatePlayer          - Player state machine, movement intent
+ 7. UpdateEnemies         - Enemy behavior
+ 8. UpdateStates          - State transitions
+ 9. UpdatePhysics         - Movement, gravity
+10. UpdateCollisions      - Collision detection and resolution
+11. UpdateObjects         - Physics object updates
+12. UpdateBoomerang       - Projectile physics and collision
+13. UpdateKnives          - Knife projectiles
+14. UpdateCombat          - Processes DamageEvents, applies damage
+15. UpdateCombatHitboxes  - Creates/updates attack hitboxes
+16. UpdateDeaths          - Death timers, respawn logic
+17. UpdateFire            - Fire hazard system
+18. UpdateEffects         - Visual effects
+19. UpdateMessage         - On-screen messages
+
+Always run:
+20. UpdateMatch           - Match timer, state transitions
+21. UpdateSettings        - Settings state
+22. UpdateSettingsMenu    - Settings menu
+23. UpdateCamera          - Follow players, dynamic zoom
+```
+
+### Networked Game (scenes/networked.go)
+
+Networked scenes use a different, simpler system set:
+
+```
+1. NewNetworkInputSystem      - Polls input, sends to server, applies local prediction
+2. NewNetInterpSystem         - Interpolates/extrapolates remote player positions
+3. UpdateNetAnimations        - Advances animation frames based on NetPlayerState.StateID
+4. NewNetPlayerEffectsSystem  - Detects jump/land transitions → SFX, dust VFX, squash/stretch
+5. NewNetCameraSystem         - Follows local player via NetPosition
+6. NewNetBoomerangEventSystem - Handles boomerang throw/catch/hit events
+7. UpdateEffects              - Animates VFX (dust, particles, squash/stretch decay)
+8. UpdateAudio                - Music and sound effects
+```
+
+Server snapshots are applied before systems run via `applySnapshot()`.
+
+### Offline/Online Code Sharing
+
+The offline (`systems/player.go`) and online (`systems/netinput.go` + `server/core/physics.go`) systems implement overlapping logic. To prevent divergence bugs, share logic wherever possible:
+
+- **Pure physics helpers** belong in `shared/gamemath/` (e.g., `ApplyFriction()`, `ClampSpeed()`, `GetSlopeSurfaceY()`). Both offline, server, and prediction physics use these
+- **Effects triggers** (SFX, VFX, squash/stretch) should be reusable helpers, not duplicated per scene. `triggerJumpEffects()` and `triggerLandEffects()` in `netplayereffects.go` demonstrate this pattern
+- **State derivation** — converting physics state to animation state (Idle/Running/Jump) — should converge to a single shared function used by both `deriveState()` on the server and `applyPrediction()` on the client
+- **Server physics changes must be mirrored in client prediction** (`systems/netprediction.go`) and vice versa. Both use the same config values from `config/config.go`
 
 ---
 
@@ -393,3 +471,98 @@ if ebiten.IsKeyPressed(ebiten.KeyX) { jump() }
 ```go
 if systems.GetAction(input, cfg.ActionJump).Pressed { jump() }
 ```
+
+### Removing Entities During Iteration
+
+**Wrong**: Removing entities inside `Query.Each()` — donburi uses swap-remove in archetype storage, which skips the entity swapped into the removed slot:
+```go
+query.Each(world, func(entry *donburi.Entry) {
+    if shouldRemove(entry) {
+        world.Remove(entry.Entity()) // BAD - skips swapped entity
+    }
+})
+```
+
+**Right**: Collect first, then remove in a separate pass:
+```go
+var toRemove []donburi.Entity
+query.Each(world, func(entry *donburi.Entry) {
+    if shouldRemove(entry) {
+        toRemove = append(toRemove, entry.Entity())
+    }
+})
+for _, entity := range toRemove {
+    world.Remove(entity)
+}
+```
+
+---
+
+## Network Multiplayer Architecture
+
+The game supports network multiplayer via a server-authoritative model using [necs](https://github.com/leap-fish/necs) for WebSocket transport and entity synchronization.
+
+### Architecture Overview
+
+```
+┌──────────────┐                         ┌──────────────┐
+│    Client     │                         │    Server     │
+│              │                         │              │
+│ Poll input   │── PlayerInput ─────────▶│ Command queue │
+│ Predict local│                         │ Run physics   │
+│ Interpolate  │◀── WorldSnapshot ───────│ DoSync()     │
+│ Render       │                         │              │
+└──────────────┘                         └──────────────┘
+```
+
+### Network Components (`shared/netcomponents/`)
+
+Components synced via necs between server and clients:
+
+- **NetPosition** — Authoritative X/Y position
+- **NetVelocity** — Velocity (used for extrapolation and reconciliation)
+- **NetPlayerState** — StateID (Idle/Running/Jump), Direction, Health, LastSequence, IsLocal flag
+
+### Client-Side Prediction
+
+The local player sees instant movement via client-side prediction (`systems/netprediction.go`):
+1. Client applies input locally with same physics as server (gravity, collision, slopes)
+2. Server snapshots are reconciled using position smoothing (not seq-based replay)
+3. Small errors: gentle correction per tick. Large errors (>20px): hard snap (teleport/respawn)
+
+### Entity Sync Lifecycle
+
+1. Server creates entity with net components on player join
+2. `srvsync.NetworkSync()` registers entity for sync
+3. Client receives `WorldSnapshot`, creates local entity with matching net components
+4. Client adds `Animation`, `NetInterp`, and `SquashStretch` components for rendering and effects
+5. Remote entities are interpolated between snapshots; extrapolated when client frames outpace server ticks
+6. `NetPlayerEffectsSystem` detects state transitions and triggers SFX/VFX for all players
+7. Stale entities collected and removed in a separate pass (avoids swap-remove issue)
+
+### Reconciliation Patterns
+
+- **Position smoothing**: Small errors get gentle per-tick correction; large errors (>snap threshold) hard-snap
+- **Locked state gating**: Server-locked animation states (Throw, Hit) are preserved by client prediction (`applyPrediction()` skips them). `reconcileLocal()` uses `animStillPlaying()` to let animations complete before accepting server transitions
+- **Velocity guard for transitions**: Jump detection uses `VelY < 0` to filter false positives caused by reconciliation setting `OnGround = true` at jump apex
+
+### Key necs API
+
+```go
+// Server
+srvsync.UseEsync(world)       // Initialize entity sync for world
+srvsync.NetworkSync()          // Register entity for synchronization
+srvsync.DoSync()               // Broadcast WorldSnapshot to all clients
+
+// Client
+esync.FindByNetworkId(world, id) // Find entity by network ID (returns donburi.Null if not found)
+esync.Mapper.Deserialize(bytes)  // Deserialize component data from snapshot
+
+// Shared
+router.On[T]()                 // Register message handler (auto-registers type)
+router.OnConnect               // Connection lifecycle callback
+router.OnDisconnect            // Disconnection lifecycle callback
+router.ResetRouter()           // Clear all handlers (needed between reconnects)
+```
+
+**Important**: necs callbacks run in goroutines. Use mutexes or command channels to safely access game state from callbacks.
