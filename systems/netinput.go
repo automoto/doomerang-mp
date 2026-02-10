@@ -51,6 +51,7 @@ func NewNetworkInputSystem(sendFn func(any) error, prediction *NetPrediction, lo
 		actions[netconfig.ActionAttack] = anyKeyPressed(bindings[cfg.ActionAttack])
 		actions[netconfig.ActionBoomerang] = anyKeyPressed(bindings[cfg.ActionBoomerang])
 		actions[netconfig.ActionCrouch] = anyKeyPressed(bindings[cfg.ActionCrouch])
+		actions[netconfig.ActionMoveUp] = anyKeyPressed(bindings[cfg.ActionMoveUp])
 
 		changed := dir != state.lastDirection
 		if !changed {
@@ -110,19 +111,27 @@ func applyPrediction(world donburi.World, pred *NetPrediction, input messages.Pl
 	pos := netcomponents.NetPosition.Get(entry)
 	pred.PredictStep(input, pos)
 
-	// Predict animation state locally for instant visual feedback (matches server deriveState)
-	if entry.HasComponent(netcomponents.NetPlayerState) {
-		state := netcomponents.NetPlayerState.Get(entry)
-		if input.Direction != 0 {
-			state.Direction = input.Direction
-		}
-		if !pred.OnGround {
-			state.StateID = netconfig.Jump
-		} else if math.Abs(pred.VelX) >= 0.1 {
-			state.StateID = netconfig.Running
-		} else {
-			state.StateID = netconfig.Idle
-		}
+	if !entry.HasComponent(netcomponents.NetPlayerState) {
+		return
+	}
+	state := netcomponents.NetPlayerState.Get(entry)
+	if input.Direction != 0 {
+		state.Direction = input.Direction
+	}
+	// Don't overwrite server-locked states
+	if state.StateID == netconfig.Throw || state.StateID == netconfig.Hit {
+		return
+	}
+	if input.Actions[netconfig.ActionBoomerang] {
+		state.StateID = netconfig.StateChargingBoomerang
+		return
+	}
+	if !pred.OnGround {
+		state.StateID = netconfig.Jump
+	} else if math.Abs(pred.VelX) >= 0.1 {
+		state.StateID = netconfig.Running
+	} else {
+		state.StateID = netconfig.Idle
 	}
 }
 

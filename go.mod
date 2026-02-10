@@ -6,6 +6,7 @@ toolchain go1.24.5
 
 require (
 	github.com/beefsack/go-astar v0.0.0-20200827232313-4ecf9e304482
+	github.com/coder/websocket v1.8.12
 	github.com/ebitenui/ebitenui v0.7.2
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/hajimehoshi/ebiten/v2 v2.9.7
@@ -19,7 +20,6 @@ require (
 )
 
 require (
-	github.com/coder/websocket v1.8.12 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/ebitengine/gomobile v0.0.0-20250923094054-ea854a63cce1 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect

@@ -32,7 +32,35 @@ func NewNetInterpSystem(tickRateFn func() int) func(*ecs.ECS) {
 		interpStep := cachedStep
 
 		esync.NetworkEntityQuery.Each(e.World, func(entry *donburi.Entry) {
-			if !entry.HasComponent(components.NetInterp) || !entry.HasComponent(netcomponents.NetPosition) {
+			if !entry.HasComponent(components.NetInterp) {
+				return
+			}
+
+			interp := components.NetInterp.Get(entry)
+
+			// Boomerang interpolation
+			if entry.HasComponent(netcomponents.NetBoomerang) {
+				nb := netcomponents.NetBoomerang.Get(entry)
+				if interp.T < 1.0 {
+					interp.T += interpStep
+					if interp.T > 1.0 {
+						interp.T = 1.0
+					}
+					nb.X = interp.PrevX + (interp.TargetX-interp.PrevX)*interp.T
+					nb.Y = interp.PrevY + (interp.TargetY-interp.PrevY)*interp.T
+				} else if nb.VelX != 0 || nb.VelY != 0 {
+					overshoot := (interp.T - 1.0) / interpStep
+					if overshoot < cfg.Netcode.MaxExtrapFrames {
+						interp.T += interpStep
+						nb.X = interp.TargetX + nb.VelX*overshoot
+						nb.Y = interp.TargetY + nb.VelY*overshoot
+					}
+				}
+				return
+			}
+
+			// Player interpolation
+			if !entry.HasComponent(netcomponents.NetPosition) {
 				return
 			}
 
@@ -43,7 +71,6 @@ func NewNetInterpSystem(tickRateFn func() int) func(*ecs.ECS) {
 				}
 			}
 
-			interp := components.NetInterp.Get(entry)
 			pos := netcomponents.NetPosition.Get(entry)
 
 			if interp.T < 1.0 {
@@ -60,7 +87,7 @@ func NewNetInterpSystem(tickRateFn func() int) func(*ecs.ECS) {
 					interp.T += interpStep
 					pos.X = interp.TargetX + interp.VelX*overshoot
 					// Apply gravity to VelY during extrapolation for natural arcs
-					extrapVelY := interp.VelY + predGravity*overshoot
+					extrapVelY := interp.VelY + cfg.Physics.Gravity*overshoot
 					pos.Y = interp.TargetY + extrapVelY*overshoot
 				}
 			}
@@ -161,6 +188,11 @@ func DrawNetworkedPlayers(e *ecs.ECS, screen *ebiten.Image) {
 					// Bottom-center anchor (feet at collision box bottom-center)
 					drawOp.GeoM.Translate(-float64(animData.FrameWidth)/2, -float64(animData.FrameHeight))
 
+					if entry.HasComponent(components.SquashStretch) {
+						ss := components.SquashStretch.Get(entry)
+						drawOp.GeoM.Scale(ss.ScaleX, ss.ScaleY)
+					}
+
 					// Direction flip
 					if state != nil && state.Direction < 0 {
 						drawOp.GeoM.Scale(-1, 1)
@@ -224,6 +256,61 @@ func DrawNetworkedPlayers(e *ecs.ECS, screen *ebiten.Image) {
 				text.Draw(screen, label, fonts.ExcelSmall.Get(), labelX, labelY, cfg.White)
 			}
 		}
+	})
+}
+
+// boomerangRotation is a visual rotation counter for spinning boomerangs.
+var boomerangRotation float64
+
+// DrawNetworkedBoomerangs renders networked boomerang entities with a spinning sprite.
+func DrawNetworkedBoomerangs(e *ecs.ECS, screen *ebiten.Image) {
+	cameraEntry, ok := components.Camera.First(e.World)
+	if !ok {
+		return
+	}
+	camera := components.Camera.Get(cameraEntry)
+	screenW := float64(screen.Bounds().Dx())
+	screenH := float64(screen.Bounds().Dy())
+
+	zoom := camera.Zoom
+	if zoom == 0 {
+		zoom = 1.0
+	}
+
+	boomerangRotation += 0.3
+
+	esync.NetworkEntityQuery.Each(e.World, func(entry *donburi.Entry) {
+		if !entry.HasComponent(netcomponents.NetBoomerang) || !entry.HasComponent(components.Sprite) {
+			return
+		}
+
+		nb := netcomponents.NetBoomerang.Get(entry)
+		sprite := components.Sprite.Get(entry)
+		img := sprite.Image
+		if img == nil {
+			return
+		}
+
+		drawOp.GeoM.Reset()
+		drawOp.ColorScale.Reset()
+
+		// Center pivot
+		w := float64(img.Bounds().Dx())
+		h := float64(img.Bounds().Dy())
+		drawOp.GeoM.Translate(-w/2, -h/2)
+
+		// Spin
+		drawOp.GeoM.Rotate(boomerangRotation)
+
+		// Position at boomerang center
+		drawOp.GeoM.Translate(nb.X+6, nb.Y+6)
+
+		// Camera transform
+		drawOp.GeoM.Translate(-camera.Position.X, -camera.Position.Y)
+		drawOp.GeoM.Scale(zoom, zoom)
+		drawOp.GeoM.Translate(screenW/2, screenH/2)
+
+		screen.DrawImage(img, drawOp)
 	})
 }
 

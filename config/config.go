@@ -146,6 +146,8 @@ type PhysicsConfig struct {
 	PlatformDropThreshold float64 // Pixels above platform to allow drop-through
 	CharacterPushback     float64 // Pushback force for character collisions
 	VerticalSpeedClamp    float64 // Maximum vertical speed magnitude
+	MaxVertSpeed          float64 // Hard clamp on vertical speed per frame
+	SlopeSurfaceOffset    float64 // Small offset to keep objects above slope surface
 }
 
 // AnimationConfig contains animation-related configuration values
@@ -199,6 +201,9 @@ type BoomerangConfig struct {
 	HitKnockback         float64 // horizontal knockback applied to enemies on hit
 	BaseDamage           int     // minimum damage at no charge
 	MaxChargeDamageBonus int     // additional damage at full charge
+	ThrowLift            float64 // upward lift added to every throw for a nice arc
+	CatchRadius          float64 // proximity radius for catching returning boomerang
+	KnockbackUpwardForce float64 // upward velocity applied on boomerang hit
 }
 
 // KnifeConfig contains knife projectile configuration
@@ -538,6 +543,8 @@ func init() {
 		PlatformDropThreshold: 4.0,  // Pixels above platform to allow drop-through
 		CharacterPushback:     2.0,  // Pushback force for character collisions
 		VerticalSpeedClamp:    10.0, // Maximum vertical speed magnitude
+		MaxVertSpeed:          16.0, // Hard clamp on vertical speed per frame
+		SlopeSurfaceOffset:    0.1,  // Keep objects slightly above slope surface
 	}
 
 	// Player Config
@@ -591,6 +598,9 @@ func init() {
 		HitKnockback:         2.0,
 		BaseDamage:           15,
 		MaxChargeDamageBonus: 15,
+		ThrowLift:            3.0,
+		CatchRadius:          24.0,
+		KnockbackUpwardForce: -4.0,
 	}
 
 	// Knife Config

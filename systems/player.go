@@ -4,6 +4,7 @@ import (
 	cfg "github.com/automoto/doomerang-mp/config"
 
 	"github.com/automoto/doomerang-mp/components"
+	"github.com/automoto/doomerang-mp/shared/gamemath"
 	"github.com/automoto/doomerang-mp/systems/factory"
 	"github.com/solarlune/resolv"
 	"github.com/yohamta/donburi"
@@ -250,7 +251,7 @@ func updatePlayerState(ecs *ecs.ECS, input *components.PlayerInputData, playerEn
 		state.CurrentState = cfg.Throw
 		state.StateTimer = 0
 		PlaySFX(ecs, cfg.SoundBoomerangThrow)
-		aimX, aimY := calculateBoomerangAim(input, player.Direction.X)
+		aimX, aimY := playerBoomerangAim(input, player.Direction.X)
 		factory.CreateBoomerang(ecs, playerEntry, float64(player.BoomerangChargeTime), aimX, aimY)
 
 	case cfg.Throw:
@@ -357,29 +358,14 @@ func updatePlayerState(ecs *ecs.ECS, input *components.PlayerInputData, playerEn
 	updatePlayerAnimation(state, animData)
 }
 
-// calculateBoomerangAim returns the aim direction vector based on input.
-// Returns (aimX, aimY) where the vector represents the throw direction.
-func calculateBoomerangAim(input *components.PlayerInputData, facingX float64) (aimX, aimY float64) {
-	upAction := GetPlayerAction(input, cfg.ActionMoveUp)
-	downAction := GetPlayerAction(input, cfg.ActionCrouch) // Down/Crouch key for aiming down
-	leftAction := GetPlayerAction(input, cfg.ActionMoveLeft)
-	rightAction := GetPlayerAction(input, cfg.ActionMoveRight)
+// playerBoomerangAim reads player input and returns aim direction using shared logic.
+func playerBoomerangAim(input *components.PlayerInputData, facingX float64) (aimX, aimY float64) {
+	upPressed := GetPlayerAction(input, cfg.ActionMoveUp).Pressed
+	downPressed := GetPlayerAction(input, cfg.ActionCrouch).Pressed
+	leftPressed := GetPlayerAction(input, cfg.ActionMoveLeft).Pressed
+	rightPressed := GetPlayerAction(input, cfg.ActionMoveRight).Pressed
 
-	horizontal := leftAction.Pressed || rightAction.Pressed
-
-	if upAction.Pressed && !downAction.Pressed {
-		if horizontal {
-			return facingX, -1.0 // Diagonal up
-		}
-		return 0, -1.0 // Straight up
-	}
-	if downAction.Pressed && !upAction.Pressed {
-		if horizontal {
-			return facingX, 1.0 // Diagonal down
-		}
-		return 0, 1.0 // Straight down
-	}
-	return facingX, 0 // Forward (default)
+	return gamemath.CalculateAimDirection(facingX, upPressed, downPressed, leftPressed || rightPressed)
 }
 
 // Helper functions for state management

@@ -38,12 +38,21 @@ type Client struct {
 	conn           *websocket.Conn
 
 	snapshotCh chan esync.WorldSnapshot // size-1 buffered; latest wins
+
+	chargeCh chan messages.BoomerangChargeEvent
+	throwCh  chan messages.BoomerangThrowEvent
+	catchCh  chan messages.BoomerangCatchEvent
+	hitCh    chan messages.BoomerangHitEvent
 }
 
 func NewClient() *Client {
 	return &Client{
 		state:      StateDisconnected,
 		snapshotCh: make(chan esync.WorldSnapshot, 1),
+		chargeCh:   make(chan messages.BoomerangChargeEvent, 4),
+		throwCh:    make(chan messages.BoomerangThrowEvent, 4),
+		catchCh:    make(chan messages.BoomerangCatchEvent, 4),
+		hitCh:      make(chan messages.BoomerangHitEvent, 4),
 	}
 }
 
@@ -105,6 +114,34 @@ func (c *Client) Connect(address, version, playerName, level string) {
 		default:
 		}
 		c.snapshotCh <- snapshot
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.BoomerangChargeEvent) {
+		select {
+		case c.chargeCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.BoomerangThrowEvent) {
+		select {
+		case c.throwCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.BoomerangCatchEvent) {
+		select {
+		case c.catchCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.BoomerangHitEvent) {
+		select {
+		case c.hitCh <- evt:
+		default:
+		}
 	})
 
 	router.OnDisconnect(func(_ *router.NetworkClient, err error) {
@@ -210,4 +247,36 @@ func (c *Client) setError(err error) {
 	c.state = StateError
 	c.lastError = err
 	c.mu.Unlock()
+}
+
+// DrainChargeEvents returns all pending charge events, non-blocking.
+func (c *Client) DrainChargeEvents() []messages.BoomerangChargeEvent {
+	return drainChan(c.chargeCh)
+}
+
+// DrainThrowEvents returns all pending throw events, non-blocking.
+func (c *Client) DrainThrowEvents() []messages.BoomerangThrowEvent {
+	return drainChan(c.throwCh)
+}
+
+// DrainCatchEvents returns all pending catch events, non-blocking.
+func (c *Client) DrainCatchEvents() []messages.BoomerangCatchEvent {
+	return drainChan(c.catchCh)
+}
+
+// DrainHitEvents returns all pending hit events, non-blocking.
+func (c *Client) DrainHitEvents() []messages.BoomerangHitEvent {
+	return drainChan(c.hitCh)
+}
+
+func drainChan[T any](ch chan T) []T {
+	var out []T
+	for {
+		select {
+		case v := <-ch:
+			out = append(out, v)
+		default:
+			return out
+		}
+	}
 }

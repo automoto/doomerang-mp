@@ -7,6 +7,7 @@ import (
 	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/components"
 	"github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/shared/gamemath"
 	"github.com/automoto/doomerang-mp/tags"
 	"github.com/solarlune/resolv"
 	"github.com/yohamta/donburi"
@@ -50,8 +51,7 @@ func CreateBoomerang(ecs *ecs.ECS, owner *donburi.Entry, chargeFrames float64, a
 		chargeRatio = 1.0
 	}
 
-	// Speed scaling: Base speed + bonus from charge (simple linear for now)
-	speed := config.Boomerang.ThrowSpeed * (1.0 + chargeRatio*0.5)
+	speed := gamemath.CalculateThrowSpeed(config.Boomerang.ThrowSpeed, chargeRatio)
 
 	// Normalize aim vector and apply speed
 	length := math.Sqrt(aimX*aimX + aimY*aimY)
@@ -59,11 +59,7 @@ func CreateBoomerang(ecs *ecs.ECS, owner *donburi.Entry, chargeFrames float64, a
 		aimX /= length
 		aimY /= length
 	}
-	velocityX := speed * aimX
-	velocityY := speed * aimY
-
-	// Add upward lift to all throws for a nice arc
-	velocityY -= 3.0
+	velocityX, velocityY := gamemath.CalculateThrowVelocity(aimX, aimY, speed, config.Boomerang.ThrowLift)
 
 	components.Physics.Set(b, &components.PhysicsData{
 		SpeedX:   velocityX,
@@ -74,18 +70,16 @@ func CreateBoomerang(ecs *ecs.ECS, owner *donburi.Entry, chargeFrames float64, a
 	})
 
 	// Boomerang Logic
-	maxRange := config.Boomerang.BaseRange + (config.Boomerang.MaxChargeRange-config.Boomerang.BaseRange)*chargeRatio
-
 	components.Boomerang.Set(b, &components.BoomerangData{
 		Owner:            owner,
 		OwnerIndex:       ownerPlayer.PlayerIndex,
 		State:            components.BoomerangOutbound,
 		DistanceTraveled: 0,
-		MaxRange:         maxRange,
+		MaxRange:         gamemath.CalculateMaxRange(config.Boomerang.BaseRange, config.Boomerang.MaxChargeRange, chargeRatio),
 		PierceDistance:   config.Boomerang.PierceDistance,
 		HitEnemies:       make(map[*donburi.Entry]struct{}),
 		HitPlayers:       make(map[*donburi.Entry]struct{}),
-		Damage:           config.Boomerang.BaseDamage + int(float64(config.Boomerang.MaxChargeDamageBonus)*chargeRatio),
+		Damage:           gamemath.CalculateDamage(config.Boomerang.BaseDamage, config.Boomerang.MaxChargeDamageBonus, chargeRatio),
 		ChargeRatio:      chargeRatio, // Store for scaled effects
 	})
 

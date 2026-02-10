@@ -13,6 +13,17 @@ type PlayerPhysics struct {
 	JumpPressed    bool
 	JumpWasPressed bool // previous frame, for edge detection
 
+	// Boomerang input state
+	BoomerangPressed    bool
+	BoomerangWasPressed bool
+	MoveUpPressed       bool
+	CrouchPressed       bool
+	BoomerangCharging   bool
+	BoomerangChargeTime int
+
+	// State timer: counts down to unlock a locked animation state (Throw, Hit)
+	LockedStateTimer int
+
 	// Last processed input sequence (for client-side prediction reconciliation)
 	LastInputSeq uint32
 }

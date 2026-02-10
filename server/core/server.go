@@ -32,7 +32,9 @@ type Server struct {
 	activeLevel *ServerLevel
 	activeName  string
 
-	playerPhysics map[donburi.Entity]*PlayerPhysics
+	playerPhysics    map[donburi.Entity]*PlayerPhysics
+	boomerangPhysics map[donburi.Entity]*BoomerangPhysics
+	playerBoomerangs map[donburi.Entity]donburi.Entity // player → active boomerang
 
 	clientEntities map[*router.NetworkClient]donburi.Entity
 	pendingClients map[*router.NetworkClient]bool
@@ -55,8 +57,10 @@ func NewServer(tickRate int, name, version string, levels map[string]*ServerLeve
 		levelNames:     levelNames,
 		activeLevel:    levels[levelNames[0]],
 		activeName:     levelNames[0],
-		playerPhysics:  make(map[donburi.Entity]*PlayerPhysics),
-		clientEntities: make(map[*router.NetworkClient]donburi.Entity),
+		playerPhysics:    make(map[donburi.Entity]*PlayerPhysics),
+		boomerangPhysics: make(map[donburi.Entity]*BoomerangPhysics),
+		playerBoomerangs: make(map[donburi.Entity]donburi.Entity),
+		clientEntities:   make(map[*router.NetworkClient]donburi.Entity),
 		pendingClients: make(map[*router.NetworkClient]bool),
 		cmdCh:          make(chan serverCmd, 64),
 	}
@@ -227,6 +231,15 @@ func (s *Server) spawnPlayer(client *router.NetworkClient, req messages.JoinRequ
 		req.PlayerName, *networkID, client.Id())
 }
 
+// broadcastEvent sends a message to all connected clients.
+func (s *Server) broadcastEvent(msg any) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for client := range s.clientEntities {
+		_ = client.SendMessage(msg)
+	}
+}
+
 func (s *Server) onDisconnect(client *router.NetworkClient, err error) {
 	if err != nil {
 		log.Printf("Client %s disconnected: %v", client.Id(), err)
@@ -247,6 +260,11 @@ func (s *Server) onDisconnect(client *router.NetworkClient, err error) {
 	}
 
 	s.cmdCh <- func() {
+		// Destroy active boomerang owned by this player
+		if bEntity, ok := s.playerBoomerangs[entity]; ok {
+			s.destroyBoomerang(bEntity)
+		}
+
 		if pp, ok := s.playerPhysics[entity]; ok {
 			removePlayerPhysics(s.activeLevel, pp)
 			delete(s.playerPhysics, entity)
@@ -274,6 +292,9 @@ func (s *Server) onPlayerInput(client *router.NetworkClient, input messages.Play
 		}
 		pp.Direction = input.Direction
 		pp.JumpPressed = input.Actions[netconfig.ActionJump]
+		pp.BoomerangPressed = input.Actions[netconfig.ActionBoomerang]
+		pp.MoveUpPressed = input.Actions[netconfig.ActionMoveUp]
+		pp.CrouchPressed = input.Actions[netconfig.ActionCrouch]
 		pp.LastInputSeq = input.Sequence
 
 		// Update facing direction in NetPlayerState

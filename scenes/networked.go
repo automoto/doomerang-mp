@@ -12,6 +12,7 @@ import (
 	"github.com/automoto/doomerang-mp/mathutil"
 	"github.com/automoto/doomerang-mp/network"
 	"github.com/automoto/doomerang-mp/shared/netcomponents"
+	"github.com/automoto/doomerang-mp/shared/netconfig"
 	"github.com/automoto/doomerang-mp/systems"
 	"github.com/automoto/doomerang-mp/systems/factory"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -82,18 +83,18 @@ func (ns *NetworkedScene) configure() {
 	factory.CreateLevelAtIndex(ns.ecsWorld, levelIndex)
 	factory.CreateCamera(ns.ecsWorld)
 
-	// Build prediction collision space from level tile data
+	// Build prediction collision space + VFX space from level data
 	if levelEntry, ok := components.Level.First(ns.ecsWorld.World); ok {
 		levelData := components.Level.Get(levelEntry)
 		if levelData.CurrentLevel != nil {
 			lvl := levelData.CurrentLevel
-			// Use first spawn point as initial position
 			spawnX, spawnY := 100.0, 100.0
 			if len(lvl.PlayerSpawns) > 0 {
 				spawnX = lvl.PlayerSpawns[0].X
 				spawnY = lvl.PlayerSpawns[0].Y
 			}
 			ns.prediction.InitCollision(lvl.SolidTiles, lvl.Width, lvl.Height, spawnX, spawnY)
+			factory.CreateSpace(ns.ecsWorld, lvl.Width, lvl.Height, 16, 16)
 		}
 	}
 
@@ -109,10 +110,15 @@ func (ns *NetworkedScene) configure() {
 	ns.ecsWorld.AddSystem(systems.NewNetworkInputSystem(sendFn, ns.prediction, localNetID))
 	ns.ecsWorld.AddSystem(systems.NewNetInterpSystem(ns.netClient.TickRate))
 	ns.ecsWorld.AddSystem(systems.UpdateNetAnimations)
+	ns.ecsWorld.AddSystem(systems.NewNetPlayerEffectsSystem(ns.prediction, localNetID))
 	ns.ecsWorld.AddSystem(systems.NewNetCameraSystem(localNetID))
+	ns.ecsWorld.AddSystem(systems.NewNetBoomerangEventSystem(ns.netClient))
+	ns.ecsWorld.AddSystem(systems.UpdateEffects)
 	ns.ecsWorld.AddSystem(systems.UpdateAudio)
 	ns.ecsWorld.AddRenderer(cfg.Default, systems.DrawLevel)
 	ns.ecsWorld.AddRenderer(cfg.Default, systems.DrawNetworkedPlayers)
+	ns.ecsWorld.AddRenderer(cfg.Default, systems.DrawNetworkedBoomerangs)
+	ns.ecsWorld.AddRenderer(cfg.Default, systems.DrawAnimated)
 	ns.ecsWorld.AddRenderer(cfg.Default, systems.DrawNetworkHUD)
 }
 
@@ -155,53 +161,63 @@ func (ns *NetworkedScene) applySnapshot(snapshot esync.WorldSnapshot) {
 			esync.NetworkIdComponent.SetValue(entry, ent.Id)
 
 			initNetPlayerAnimation(entry)
+			initNetBoomerangSprite(entry)
 		}
 
 		entry := world.Entry(entity)
 
 		if ent.Id == myNetID {
-			// Local player — reconcile prediction instead of overwriting
 			ns.reconcileLocal(entry, compData)
-		} else {
-			// Remote players — interpolate position, apply other state directly
-			// First pass: extract velocity for extrapolation
-			var remoteVel *netcomponents.NetVelocityData
-			for _, data := range compData {
-				if v, ok := data.(netcomponents.NetVelocityData); ok {
-					remoteVel = &v
+			continue
+		}
+
+		// Remote entities — extract velocity for extrapolation
+		var remoteVel *netcomponents.NetVelocityData
+		for _, data := range compData {
+			if v, ok := data.(netcomponents.NetVelocityData); ok {
+				remoteVel = &v
+				break
+			}
+		}
+
+		for _, data := range compData {
+			switch v := data.(type) {
+			case netcomponents.NetPositionData:
+				if !entry.HasComponent(components.NetInterp) {
+					applyComponentToEntry(entry, data)
 					break
 				}
-			}
-
-			for _, data := range compData {
-				if v, ok := data.(netcomponents.NetPositionData); ok && entry.HasComponent(components.NetInterp) {
-					interp := components.NetInterp.Get(entry)
-					if !interp.Initialized {
-						// First snapshot — set position directly, no interpolation
-						applyComponentToEntry(entry, data)
-						interp.PrevX = v.X
-						interp.PrevY = v.Y
-						interp.TargetX = v.X
-						interp.TargetY = v.Y
-						interp.T = 1.0
-						interp.Initialized = true
-					} else {
-						// Subsequent snapshots — start interpolation from current position
+				interp := components.NetInterp.Get(entry)
+				updateInterp(interp, v.X, v.Y,
+					func() { applyComponentToEntry(entry, data) },
+					func() (float64, float64) {
 						pos := netcomponents.NetPosition.Get(entry)
-						interp.PrevX = pos.X
-						interp.PrevY = pos.Y
-						interp.TargetX = v.X
-						interp.TargetY = v.Y
-						interp.T = 0
-					}
-					// Store velocity for extrapolation
-					if remoteVel != nil {
-						interp.VelX = remoteVel.SpeedX
-						interp.VelY = remoteVel.SpeedY
-					}
-				} else {
-					applyComponentToEntry(entry, data)
+						return pos.X, pos.Y
+					},
+				)
+				if remoteVel != nil {
+					interp.VelX = remoteVel.SpeedX
+					interp.VelY = remoteVel.SpeedY
 				}
+
+			case netcomponents.NetBoomerangData:
+				if !entry.HasComponent(components.NetInterp) {
+					applyComponentToEntry(entry, data)
+					break
+				}
+				interp := components.NetInterp.Get(entry)
+				updateInterp(interp, v.X, v.Y,
+					func() { applyComponentToEntry(entry, data) },
+					func() (float64, float64) {
+						nb := netcomponents.NetBoomerang.Get(entry)
+						return nb.X, nb.Y
+					},
+				)
+				interp.VelX = v.VelX
+				interp.VelY = v.VelY
+
+			default:
+				applyComponentToEntry(entry, data)
 			}
 		}
 	}
@@ -247,15 +263,21 @@ func (ns *NetworkedScene) reconcileLocal(entry *donburi.Entry, components []any)
 		}
 	}
 
-	// Apply non-position state (health, stateID, etc.) directly
 	if serverState != nil {
 		if !entry.HasComponent(netcomponents.NetPlayerState) {
 			entry.AddComponent(netcomponents.NetPlayerState)
 		}
 		localState := netcomponents.NetPlayerState.Get(entry)
-		localState.StateID = serverState.StateID
 		localState.Health = serverState.Health
 		localState.IsLocal = true
+
+		// Let locked animation states play to completion before accepting server transitions
+		locked := localState.StateID == netconfig.Throw || localState.StateID == netconfig.Hit
+		if locked && serverState.StateID != localState.StateID && animStillPlaying(entry) {
+			// Keep local state — animation still playing
+		} else {
+			localState.StateID = serverState.StateID
+		}
 	}
 
 	if serverPos == nil || serverVel == nil {
@@ -322,20 +344,66 @@ func (ns *NetworkedScene) reconcileLocal(entry *donburi.Entry, components []any)
 		ns.prediction.OnGround = math.Abs(serverVel.SpeedY) < 0.1
 	}
 
-	// Always update velocity component with server's authoritative velocity
 	localVel := netcomponents.NetVelocity.Get(entry)
 	localVel.SpeedX = serverVel.SpeedX
 	localVel.SpeedY = serverVel.SpeedY
 }
 
+// initNetBoomerangSprite attaches Sprite and NetInterp components to a boomerang entity.
+func initNetBoomerangSprite(entry *donburi.Entry) {
+	if !entry.HasComponent(netcomponents.NetBoomerang) {
+		return
+	}
+	img := assets.GetObjectImage("boom_green.png")
+	entry.AddComponent(components.Sprite)
+	components.Sprite.SetValue(entry, components.SpriteData{
+		Image: img,
+	})
+	entry.AddComponent(components.NetInterp)
+}
+
 // initNetPlayerAnimation attaches Animation and NetInterp components to a networked player entity.
+// Skips non-player entities (e.g. boomerangs).
 func initNetPlayerAnimation(entry *donburi.Entry) {
+	if !entry.HasComponent(netcomponents.NetPosition) {
+		return
+	}
 	animData := factory.GenerateAnimations("player", cfg.Player.FrameWidth, cfg.Player.FrameHeight)
 	animData.SetAnimation(cfg.Idle)
 	entry.AddComponent(components.Animation)
 	components.Animation.SetValue(entry, *animData)
 
 	entry.AddComponent(components.NetInterp)
+}
+
+// updateInterp sets interpolation targets. On first snapshot it snaps directly
+// and calls initFn to set the underlying component data; on subsequent snapshots
+// it reads current position via prevFn and starts interpolation.
+func updateInterp(interp *components.NetInterpData, targetX, targetY float64, initFn func(), prevFn func() (float64, float64)) {
+	if !interp.Initialized {
+		initFn()
+		interp.PrevX = targetX
+		interp.PrevY = targetY
+		interp.TargetX = targetX
+		interp.TargetY = targetY
+		interp.T = 1.0
+		interp.Initialized = true
+		return
+	}
+	prevX, prevY := prevFn()
+	interp.PrevX = prevX
+	interp.PrevY = prevY
+	interp.TargetX = targetX
+	interp.TargetY = targetY
+	interp.T = 0
+}
+
+func animStillPlaying(entry *donburi.Entry) bool {
+	if !entry.HasComponent(components.Animation) {
+		return false
+	}
+	animData := components.Animation.Get(entry)
+	return animData.CurrentAnimation != nil && !animData.CurrentAnimation.Looped
 }
 
 func componentTypesFromInstances(components []any) []donburi.IComponentType {
@@ -348,6 +416,8 @@ func componentTypesFromInstances(components []any) []donburi.IComponentType {
 			ctypes = append(ctypes, netcomponents.NetVelocity)
 		case netcomponents.NetPlayerStateData:
 			ctypes = append(ctypes, netcomponents.NetPlayerState)
+		case netcomponents.NetBoomerangData:
+			ctypes = append(ctypes, netcomponents.NetBoomerang)
 		}
 	}
 	return ctypes
@@ -370,5 +440,10 @@ func applyComponentToEntry(entry *donburi.Entry, data any) {
 			entry.AddComponent(netcomponents.NetPlayerState)
 		}
 		netcomponents.NetPlayerState.SetValue(entry, v)
+	case netcomponents.NetBoomerangData:
+		if !entry.HasComponent(netcomponents.NetBoomerang) {
+			entry.AddComponent(netcomponents.NetBoomerang)
+		}
+		netcomponents.NetBoomerang.SetValue(entry, v)
 	}
 }

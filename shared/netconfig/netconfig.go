@@ -128,6 +128,12 @@ func (s StateID) String() string {
 	return "unknown"
 }
 
+// Boomerang state constants
+const (
+	BoomerangOutbound = 0
+	BoomerangInbound  = 1
+)
+
 // ActionID represents a logical game action.
 type ActionID int
 

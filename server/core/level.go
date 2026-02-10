@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/automoto/doomerang-mp/shared/leveldata"
+	"github.com/automoto/doomerang-mp/tags"
 	"github.com/solarlune/resolv"
 )
 
@@ -24,12 +25,12 @@ func NewServerLevel(data *leveldata.CollisionData) *ServerLevel {
 	for _, r := range data.SolidRects {
 		var obj *resolv.Object
 		switch r.SlopeType {
-		case tagSlope45UpR:
-			obj = resolv.NewObject(r.X, r.Y, r.W, r.H, tagRamp, tagSlope45UpR)
-		case tagSlope45UpL:
-			obj = resolv.NewObject(r.X, r.Y, r.W, r.H, tagRamp, tagSlope45UpL)
+		case tags.Slope45UpRight:
+			obj = resolv.NewObject(r.X, r.Y, r.W, r.H, tags.ResolvRamp, tags.Slope45UpRight)
+		case tags.Slope45UpLeft:
+			obj = resolv.NewObject(r.X, r.Y, r.W, r.H, tags.ResolvRamp, tags.Slope45UpLeft)
 		default:
-			obj = resolv.NewObject(r.X, r.Y, r.W, r.H, tagSolid)
+			obj = resolv.NewObject(r.X, r.Y, r.W, r.H, tags.ResolvSolid)
 		}
 		obj.SetShape(resolv.NewRectangle(0, 0, r.W, r.H))
 		space.Add(obj)

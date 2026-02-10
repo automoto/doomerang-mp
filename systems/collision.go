@@ -5,18 +5,14 @@ import (
 	"os"
 
 	"github.com/automoto/doomerang-mp/components"
-	"github.com/automoto/doomerang-mp/mathutil"
 	cfg "github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/shared/gamemath"
 	"github.com/automoto/doomerang-mp/systems/factory"
 	"github.com/automoto/doomerang-mp/tags"
 	"github.com/solarlune/resolv"
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"
 )
-
-// slopeSurfaceOffset is a small offset to keep the player slightly above the slope surface
-// to prevent z-fighting and ensure stable ground detection
-const slopeSurfaceOffset = 0.1
 
 func UpdateCollisions(ecs *ecs.ECS) {
 	tags.Player.Each(ecs.World, func(e *donburi.Entry) {
@@ -188,7 +184,7 @@ func setWallSlidingIfAirborne(physics *components.PhysicsData, check *resolv.Col
 }
 
 func clampVerticalSpeed(speedY float64) float64 {
-	return math.Max(math.Min(speedY, 16), -16)
+	return math.Max(math.Min(speedY, cfg.Physics.MaxVertSpeed), -cfg.Physics.MaxVertSpeed)
 }
 
 func handleUpwardCollision(physics *components.PhysicsData, object *resolv.Object, check *resolv.Collision) float64 {
@@ -240,13 +236,13 @@ func tryRampCollision(physics *components.PhysicsData, object *resolv.Object, ch
 		return dy, false
 	}
 
-	surfaceY := getSlopeSurfaceY(object, ramp)
+	surfaceY := gamemath.GetSlopeSurfaceY(object, ramp, tags.Slope45UpRight, tags.Slope45UpLeft)
 	playerBottom := object.Y + object.H
 
 	if playerBottom+dy >= surfaceY {
 		physics.OnGround = ramp
 		physics.SpeedY = 0
-		return surfaceY - playerBottom + slopeSurfaceOffset, true
+		return surfaceY - playerBottom + cfg.Physics.SlopeSurfaceOffset, true
 	}
 
 	return dy, false
@@ -256,28 +252,10 @@ func tryRampCollision(physics *components.PhysicsData, object *resolv.Object, ch
 // Always snaps to surface when called - the Check() that triggers this
 // already ensures we're close enough to the ramp to be walking on it.
 func snapToSlopeSurface(physics *components.PhysicsData, object *resolv.Object, ramp *resolv.Object) {
-	surfaceY := getSlopeSurfaceY(object, ramp)
-	object.Y = surfaceY - object.H + slopeSurfaceOffset
+	surfaceY := gamemath.GetSlopeSurfaceY(object, ramp, tags.Slope45UpRight, tags.Slope45UpLeft)
+	object.Y = gamemath.SnapToSlopeY(object.H, surfaceY, cfg.Physics.SlopeSurfaceOffset)
 	physics.OnGround = ramp
 	physics.SpeedY = 0
-}
-
-// getSlopeSurfaceY calculates the slope surface Y at the object's center X position
-func getSlopeSurfaceY(object *resolv.Object, ramp *resolv.Object) float64 {
-	playerCenterX := object.X + object.W/2
-	relativeX := mathutil.ClampFloat(playerCenterX-ramp.X, 0, ramp.W)
-	slope := relativeX / ramp.W
-
-	switch {
-	case ramp.HasTags(tags.Slope45UpRight):
-		// Surface rises from left (Y+H) to right (Y)
-		return ramp.Y + ramp.H*(1-slope)
-	case ramp.HasTags(tags.Slope45UpLeft):
-		// Surface falls from left (Y) to right (Y+H)
-		return ramp.Y + ramp.H*slope
-	default:
-		return ramp.Y
-	}
 }
 
 

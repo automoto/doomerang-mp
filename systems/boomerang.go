@@ -5,6 +5,7 @@ import (
 
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/shared/gamemath"
 	"github.com/automoto/doomerang-mp/systems/factory"
 	"github.com/automoto/doomerang-mp/tags"
 	"github.com/solarlune/resolv"
@@ -70,29 +71,11 @@ func updateInbound(ecs *ecs.ECS, e *donburi.Entry, b *components.BoomerangData, 
 	currentX := obj.X + obj.W/2
 	currentY := obj.Y + obj.H/2
 
-	dx := targetX - currentX
-	dy := targetY - currentY
-
-	// Squared distance for proximity check
-	distSq := dx*dx + dy*dy
-
-	// Only normalize and update velocity if we aren't already "at" the target
-	// and to avoid division by zero.
-	if distSq > 0.01 {
-		dist := math.Sqrt(distSq)
-		dirX := dx / dist
-		dirY := dy / dist
-
-		// Apply Return Speed
-		returnSpeed := cfg.Boomerang.ReturnSpeed
-		physics.SpeedX = dirX * returnSpeed
-		physics.SpeedY = dirY * returnSpeed
-	} else {
-		// Stop moving if we are exactly at the player center
-		// (collision check will catch it)
-		physics.SpeedX = 0
-		physics.SpeedY = 0
-	}
+	physics.SpeedX, physics.SpeedY = gamemath.CalculateHomingVelocity(
+		currentX, currentY,
+		targetX, targetY,
+		cfg.Boomerang.ReturnSpeed,
+	)
 }
 
 func SwitchToInbound(b *components.BoomerangData, physics *components.PhysicsData) {

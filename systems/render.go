@@ -49,6 +49,9 @@ func DrawAnimated(ecs *ecs.ECS, screen *ebiten.Image) {
 	maxY := camera.Position.Y + halfVisibleH + padding
 
 	components.Animation.Each(ecs.World, func(e *donburi.Entry) {
+		if !e.HasComponent(components.Object) {
+			return // Networked entities use NetPosition, not Object
+		}
 		o := components.Object.Get(e)
 		isPlayer := e.HasComponent(components.Player)
 		isEnemy := e.HasComponent(components.Enemy)

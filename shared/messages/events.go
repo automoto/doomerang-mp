@@ -27,6 +27,12 @@ type DespawnEvent struct {
 	NetworkID uint
 }
 
+// BoomerangChargeEvent is sent when a player begins charging a boomerang throw
+type BoomerangChargeEvent struct {
+	OwnerNetworkID uint
+	X, Y           float64 // Player feet position for VFX
+}
+
 // BoomerangThrowEvent is sent when a player throws a boomerang
 type BoomerangThrowEvent struct {
 	OwnerNetworkID uint
@@ -39,6 +45,17 @@ type BoomerangThrowEvent struct {
 // BoomerangCatchEvent is sent when a boomerang returns to owner
 type BoomerangCatchEvent struct {
 	OwnerNetworkID uint
+}
+
+// BoomerangHitEvent is sent when a boomerang hits a player
+type BoomerangHitEvent struct {
+	AttackerNetworkID   uint
+	TargetNetworkID     uint
+	HitX, HitY         float64
+	ChargeRatio         float64
+	Damage              int
+	KnockbackX          float64
+	KnockbackY          float64
 }
 
 // MatchStateChangeEvent is broadcast when match state changes

@@ -6,23 +6,12 @@ import (
 	"github.com/automoto/doomerang-mp/assets"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/network"
+	"github.com/automoto/doomerang-mp/shared/gamemath"
 	"github.com/automoto/doomerang-mp/shared/messages"
 	"github.com/automoto/doomerang-mp/shared/netcomponents"
 	"github.com/automoto/doomerang-mp/shared/netconfig"
 	"github.com/automoto/doomerang-mp/tags"
 	"github.com/solarlune/resolv"
-)
-
-// Client-side physics constants — must match server/core/physics.go exactly.
-const (
-	predGravity            = 0.75
-	predJumpSpeed          = 15.0
-	predMaxSpeed           = 6.0
-	predAcceleration       = 0.75
-	predFriction           = 0.5
-	predMaxFallSpeed       = 10.0
-	predMaxVertSpeed       = 16.0
-	predSlopeSurfaceOffset = 0.1
 )
 
 // NetPrediction owns client-side prediction state for the local player.
@@ -32,6 +21,7 @@ type NetPrediction struct {
 	// Local physics state (mirrors server PlayerPhysics)
 	VelX, VelY     float64
 	OnGround       bool
+	WasOnGround    bool // Previous frame's ground state for transition detection
 	JumpWasPressed bool
 	Initialized    bool // True after first server snapshot has been applied
 
@@ -79,44 +69,32 @@ func (p *NetPrediction) InitCollision(tiles []assets.SolidTile, mapW, mapH int, 
 // updates the local player entity's NetPosition. It stores the result in the
 // prediction buffer for later reconciliation.
 func (p *NetPrediction) PredictStep(input messages.PlayerInput, pos *netcomponents.NetPositionData) {
-	// --- Horizontal input ---
-	if input.Direction != 0 {
-		p.VelX += float64(input.Direction) * predAcceleration
+	wasOnGround := p.OnGround
+
+	// Skip acceleration during charging — friction only, matching offline
+	if input.Direction != 0 && !input.Actions[netconfig.ActionBoomerang] {
+		p.VelX += float64(input.Direction) * cfg.Player.Acceleration
 	}
 
-	// --- Jump (edge-triggered) ---
 	jumpPressed := input.Actions[netconfig.ActionJump]
 	if jumpPressed && !p.JumpWasPressed && p.OnGround {
-		p.VelY = -predJumpSpeed
+		p.VelY = -cfg.Player.JumpSpeed
 		p.OnGround = false
 	}
 	p.JumpWasPressed = jumpPressed
 
-	// --- Friction (ground only) ---
 	if p.OnGround {
-		if p.VelX > predFriction {
-			p.VelX -= predFriction
-		} else if p.VelX < -predFriction {
-			p.VelX += predFriction
-		} else {
-			p.VelX = 0
-		}
+		p.VelX = gamemath.ApplyFriction(p.VelX, cfg.Player.Friction)
 	}
 
-	// --- Clamp horizontal speed ---
-	if p.VelX > predMaxSpeed {
-		p.VelX = predMaxSpeed
-	} else if p.VelX < -predMaxSpeed {
-		p.VelX = -predMaxSpeed
+	p.VelX = gamemath.ClampSpeed(p.VelX, cfg.Player.MaxSpeed)
+
+	// Must match server/core/physics.go
+	p.VelY += cfg.Physics.Gravity
+	if p.VelY > cfg.Physics.MaxFallSpeed {
+		p.VelY = cfg.Physics.MaxFallSpeed
 	}
 
-	// --- Gravity (unconditional — must match server/core/physics.go) ---
-	p.VelY += predGravity
-	if p.VelY > predMaxFallSpeed {
-		p.VelY = predMaxFallSpeed
-	}
-
-	// --- Resolve collisions ---
 	if p.PlayerObj != nil {
 		p.PlayerObj.X = pos.X
 		p.PlayerObj.Y = pos.Y
@@ -128,11 +106,11 @@ func (p *NetPrediction) PredictStep(input messages.PlayerInput, pos *netcomponen
 	} else {
 		// Fallback: no collision space, bare movement
 		pos.X += p.VelX
-		dy := math.Max(math.Min(p.VelY, predMaxVertSpeed), -predMaxVertSpeed)
+		dy := math.Max(math.Min(p.VelY, cfg.Physics.MaxVertSpeed), -cfg.Physics.MaxVertSpeed)
 		pos.Y += dy
 	}
 
-	// Store prediction
+	p.WasOnGround = wasOnGround
 	p.Buffer.Store(input, pos.X, pos.Y)
 }
 
@@ -176,7 +154,7 @@ func (p *NetPrediction) resolveHorizontal() {
 // resolveVertical handles vertical movement with ground, ceiling, and ramp collision.
 func (p *NetPrediction) resolveVertical() {
 	dy := p.VelY
-	dy = math.Max(math.Min(dy, predMaxVertSpeed), -predMaxVertSpeed)
+	dy = math.Max(math.Min(dy, cfg.Physics.MaxVertSpeed), -cfg.Physics.MaxVertSpeed)
 
 	checkDist := dy
 	if dy >= 0 {
@@ -187,10 +165,10 @@ func (p *NetPrediction) resolveVertical() {
 		// Ramp landing (priority)
 		if dy >= 0 {
 			if ramps := check.ObjectsByTags(tags.ResolvRamp); len(ramps) > 0 {
-				surfaceY := predGetSlopeSurfaceY(p.PlayerObj, ramps[0])
+				surfaceY := gamemath.GetSlopeSurfaceY(p.PlayerObj, ramps[0], tags.Slope45UpRight, tags.Slope45UpLeft)
 				playerBottom := p.PlayerObj.Y + p.PlayerObj.H
 				if playerBottom+dy >= surfaceY {
-					p.PlayerObj.Y = surfaceY - p.PlayerObj.H + predSlopeSurfaceOffset
+					p.PlayerObj.Y = gamemath.SnapToSlopeY(p.PlayerObj.H, surfaceY, cfg.Physics.SlopeSurfaceOffset)
 					p.PlayerObj.Update()
 					p.VelY = 0
 					p.OnGround = true
@@ -225,26 +203,9 @@ func (p *NetPrediction) resolveVertical() {
 
 // predSnapToSlope adjusts the player Y position to stay on a slope surface.
 func (p *NetPrediction) predSnapToSlope(ramp *resolv.Object) {
-	surfaceY := predGetSlopeSurfaceY(p.PlayerObj, ramp)
-	p.PlayerObj.Y = surfaceY - p.PlayerObj.H + predSlopeSurfaceOffset
+	surfaceY := gamemath.GetSlopeSurfaceY(p.PlayerObj, ramp, tags.Slope45UpRight, tags.Slope45UpLeft)
+	p.PlayerObj.Y = gamemath.SnapToSlopeY(p.PlayerObj.H, surfaceY, cfg.Physics.SlopeSurfaceOffset)
 	p.PlayerObj.Update()
 	p.OnGround = true
 	p.VelY = 0
 }
-
-// predGetSlopeSurfaceY calculates the slope surface Y at the object's center X.
-// Mirrors systems/collision.go:265-280.
-func predGetSlopeSurfaceY(object *resolv.Object, ramp *resolv.Object) float64 {
-	playerCenterX := object.X + object.W/2
-	relativeX := math.Max(0, math.Min(playerCenterX-ramp.X, ramp.W))
-	slope := relativeX / ramp.W
-
-	if ramp.HasTags(tags.Slope45UpRight) {
-		return ramp.Y + ramp.H*(1-slope)
-	}
-	if ramp.HasTags(tags.Slope45UpLeft) {
-		return ramp.Y + ramp.H*slope
-	}
-	return ramp.Y
-}
-
