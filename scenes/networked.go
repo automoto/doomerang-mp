@@ -9,6 +9,7 @@ import (
 
 	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/components"
+	"github.com/automoto/doomerang-mp/mathutil"
 	"github.com/automoto/doomerang-mp/network"
 	"github.com/automoto/doomerang-mp/shared/netcomponents"
 	"github.com/automoto/doomerang-mp/systems"
@@ -205,20 +206,28 @@ func (ns *NetworkedScene) applySnapshot(snapshot esync.WorldSnapshot) {
 		}
 	}
 
+	// Collect stale entities first, then remove in a separate pass.
+	// Removing during Each iteration can skip entities due to donburi's
+	// swap-remove archetype storage, causing stale entities to accumulate.
+	var stale []donburi.Entity
 	esync.NetworkEntityQuery.Each(world, func(entry *donburi.Entry) {
 		id := esync.GetNetworkId(entry)
 		if id == nil {
 			return
 		}
 		if !ns.presentIDs[*id] {
-			entry.Remove()
+			stale = append(stale, entry.Entity())
 		}
 	})
+	for _, entity := range stale {
+		world.Remove(entity)
+	}
 }
 
-// reconcileLocal handles server state for the local player using prediction
-// reconciliation. Instead of overwriting position, it compares with the
-// predicted position and corrects if needed.
+// reconcileLocal handles server state for the local player using position
+// smoothing. Instead of seq-based reconciliation + replay, it compares the
+// current server position with the current local position and applies a small,
+// capped correction per snapshot.
 func (ns *NetworkedScene) reconcileLocal(entry *donburi.Entry, components []any) {
 	var serverPos *netcomponents.NetPositionData
 	var serverVel *netcomponents.NetVelocityData
@@ -247,49 +256,9 @@ func (ns *NetworkedScene) reconcileLocal(entry *donburi.Entry, components []any)
 		localState.StateID = serverState.StateID
 		localState.Health = serverState.Health
 		localState.IsLocal = true
-		// Don't overwrite Direction — local prediction handles it
 	}
 
-	// If we have both position and velocity from server, reconcile
-	if serverPos != nil && serverVel != nil && serverState != nil {
-		if !entry.HasComponent(netcomponents.NetPosition) {
-			entry.AddComponent(netcomponents.NetPosition)
-		}
-		if !entry.HasComponent(netcomponents.NetVelocity) {
-			entry.AddComponent(netcomponents.NetVelocity)
-		}
-
-		localPos := netcomponents.NetPosition.Get(entry)
-
-		if serverState.LastSequence == 0 || ns.prediction.Buffer.NextSeq() == 0 {
-			// No input sent yet — accept server position directly (initial spawn)
-			localPos.X = serverPos.X
-			localPos.Y = serverPos.Y
-			ns.prediction.OnGround = math.Abs(serverVel.SpeedY) < 0.1
-			if ns.prediction.PlayerObj != nil {
-				ns.prediction.PlayerObj.X = serverPos.X
-				ns.prediction.PlayerObj.Y = serverPos.Y
-				ns.prediction.PlayerObj.Update()
-			}
-		} else {
-			reconPos := &netcomponents.NetPositionData{X: serverPos.X, Y: serverPos.Y}
-			corrected := ns.prediction.Reconcile(reconPos, serverVel, serverState.LastSequence)
-			if corrected {
-				localPos.X = reconPos.X
-				localPos.Y = reconPos.Y
-				if ns.prediction.PlayerObj != nil {
-					ns.prediction.PlayerObj.X = reconPos.X
-					ns.prediction.PlayerObj.Y = reconPos.Y
-					ns.prediction.PlayerObj.Update()
-				}
-			}
-		}
-
-		// Always update velocity component with server's authoritative velocity
-		localVel := netcomponents.NetVelocity.Get(entry)
-		localVel.SpeedX = serverVel.SpeedX
-		localVel.SpeedY = serverVel.SpeedY
-	} else {
+	if serverPos == nil || serverVel == nil {
 		// Missing components — fallback to direct apply
 		for _, data := range components {
 			applyComponentToEntry(entry, data)
@@ -297,7 +266,66 @@ func (ns *NetworkedScene) reconcileLocal(entry *donburi.Entry, components []any)
 		if entry.HasComponent(netcomponents.NetPlayerState) {
 			netcomponents.NetPlayerState.Get(entry).IsLocal = true
 		}
+		return
 	}
+
+	if !entry.HasComponent(netcomponents.NetPosition) {
+		entry.AddComponent(netcomponents.NetPosition)
+	}
+	if !entry.HasComponent(netcomponents.NetVelocity) {
+		entry.AddComponent(netcomponents.NetVelocity)
+	}
+
+	localPos := netcomponents.NetPosition.Get(entry)
+
+	if !ns.prediction.Initialized {
+		// First snapshot: snap to server position
+		localPos.X = serverPos.X
+		localPos.Y = serverPos.Y
+		ns.prediction.VelX = serverVel.SpeedX
+		ns.prediction.VelY = serverVel.SpeedY
+		ns.prediction.OnGround = math.Abs(serverVel.SpeedY) < 0.1
+		ns.prediction.Initialized = true
+		if ns.prediction.PlayerObj != nil {
+			ns.prediction.PlayerObj.X = serverPos.X
+			ns.prediction.PlayerObj.Y = serverPos.Y
+			ns.prediction.PlayerObj.Update()
+		}
+	} else {
+		// Compare current positions — no seq lookup, no replay
+		errX := serverPos.X - localPos.X
+		errY := serverPos.Y - localPos.Y
+		dist := math.Sqrt(errX*errX + errY*errY)
+
+		if dist > cfg.Netcode.SnapThreshold {
+			// Teleport/respawn: hard snap
+			localPos.X = serverPos.X
+			localPos.Y = serverPos.Y
+			ns.prediction.VelX = serverVel.SpeedX
+			ns.prediction.VelY = serverVel.SpeedY
+		} else if dist > cfg.Netcode.SmoothThreshold {
+			// Gentle nudge, capped per tick
+			corrX := mathutil.ClampFloat(errX*cfg.Netcode.CorrectionRate, -cfg.Netcode.MaxCorrPerTick, cfg.Netcode.MaxCorrPerTick)
+			corrY := mathutil.ClampFloat(errY*cfg.Netcode.CorrectionRate, -cfg.Netcode.MaxCorrPerTick, cfg.Netcode.MaxCorrPerTick)
+			localPos.X += corrX
+			localPos.Y += corrY
+			ns.prediction.VelX += (serverVel.SpeedX - ns.prediction.VelX) * cfg.Netcode.VelocityBlendRate
+			ns.prediction.VelY += (serverVel.SpeedY - ns.prediction.VelY) * cfg.Netcode.VelocityBlendRate
+		}
+
+		// Sync collision object + ground state
+		if ns.prediction.PlayerObj != nil {
+			ns.prediction.PlayerObj.X = localPos.X
+			ns.prediction.PlayerObj.Y = localPos.Y
+			ns.prediction.PlayerObj.Update()
+		}
+		ns.prediction.OnGround = math.Abs(serverVel.SpeedY) < 0.1
+	}
+
+	// Always update velocity component with server's authoritative velocity
+	localVel := netcomponents.NetVelocity.Get(entry)
+	localVel.SpeedX = serverVel.SpeedX
+	localVel.SpeedY = serverVel.SpeedY
 }
 
 // initNetPlayerAnimation attaches Animation and NetInterp components to a networked player entity.

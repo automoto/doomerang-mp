@@ -229,10 +229,14 @@ func DrawNetworkedPlayers(e *ecs.ECS, screen *ebiten.Image) {
 
 func DrawNetworkHUD(e *ecs.ECS, screen *ebiten.Image) {
 	entityCount := 0
-	esync.NetworkEntityQuery.Each(e.World, func(_ *donburi.Entry) {
+	var ids []int
+	esync.NetworkEntityQuery.Each(e.World, func(entry *donburi.Entry) {
 		entityCount++
+		if nid := esync.GetNetworkId(entry); nid != nil {
+			ids = append(ids, int(*nid))
+		}
 	})
 
-	info := fmt.Sprintf("Online - Entities: %d", entityCount)
+	info := fmt.Sprintf("Online - Entities: %d  IDs: %v", entityCount, ids)
 	text.Draw(screen, info, fonts.ExcelSmall.Get(), 4, 12, cfg.LightGreen)
 }

@@ -392,11 +392,12 @@ type NetworkConfig struct {
 
 // NetcodeConfig contains client-side prediction and reconciliation settings.
 type NetcodeConfig struct {
-	SnapThreshold      float64 // Snap to server position if error exceeds this (pixels)
-	SmoothThreshold    float64 // Ignore error below this (pixels)
-	SmoothFactor       float64 // Lerp speed for corrections between smooth and snap thresholds
-	VelocityBlendRate  float64 // Lerp rate for velocity blending on medium corrections (0-1)
-	MaxExtrapFrames    float64 // Max frames to extrapolate remote players beyond last snapshot
+	SnapThreshold     float64 // Hard snap for teleports/respawns (pixels)
+	SmoothThreshold   float64 // Ignore error below this (pixels)
+	CorrectionRate    float64 // Fraction of error to correct per snapshot (0-1)
+	MaxCorrPerTick    float64 // Cap correction per snapshot (pixels)
+	VelocityBlendRate float64 // Lerp rate for velocity sync (0-1)
+	MaxExtrapFrames   float64 // Max frames to extrapolate remote players beyond last snapshot
 }
 
 // Config holds general game configuration
@@ -967,12 +968,13 @@ func init() {
 		MasterServerURL: "http://localhost:8080",
 	}
 
-	// Netcode Config (client-side prediction, tuned for 60 Hz + gravity parity)
+	// Netcode Config (client-side prediction with position smoothing)
 	Netcode = NetcodeConfig{
-		SnapThreshold:     15.0, // Snap if prediction error > 15 pixels
-		SmoothThreshold:   0.5,  // Ignore error below 0.5 pixels (near-zero with parity fix)
-		SmoothFactor:      0.6,  // Faster convergence for tighter corrections
-		VelocityBlendRate: 0.6,  // Faster velocity blend
-		MaxExtrapFrames:   3.0,  // 50ms jitter buffer still appropriate at 60 Hz
+		SnapThreshold:     50.0,  // Only snap for large teleports/respawns
+		SmoothThreshold:   2.0,   // Ignore sub-2px errors
+		CorrectionRate:    0.1,   // 10% of error per snapshot
+		MaxCorrPerTick:    2.0,   // Max 2px correction per snapshot
+		VelocityBlendRate: 0.15,  // Gentle velocity blend
+		MaxExtrapFrames:   3.0,   // Remote player extrapolation limit
 	}
 }

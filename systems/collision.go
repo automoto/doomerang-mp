@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/automoto/doomerang-mp/components"
+	"github.com/automoto/doomerang-mp/mathutil"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/systems/factory"
 	"github.com/automoto/doomerang-mp/tags"
@@ -264,7 +265,7 @@ func snapToSlopeSurface(physics *components.PhysicsData, object *resolv.Object, 
 // getSlopeSurfaceY calculates the slope surface Y at the object's center X position
 func getSlopeSurfaceY(object *resolv.Object, ramp *resolv.Object) float64 {
 	playerCenterX := object.X + object.W/2
-	relativeX := clampFloat(playerCenterX-ramp.X, 0, ramp.W)
+	relativeX := mathutil.ClampFloat(playerCenterX-ramp.X, 0, ramp.W)
 	slope := relativeX / ramp.W
 
 	switch {
@@ -279,16 +280,6 @@ func getSlopeSurfaceY(object *resolv.Object, ramp *resolv.Object) float64 {
 	}
 }
 
-// clampFloat constrains a value to the range [min, max]
-func clampFloat(value, min, max float64) float64 {
-	if value < min {
-		return min
-	}
-	if value > max {
-		return max
-	}
-	return value
-}
 
 func tryPlatformCollision(physics *components.PhysicsData, object *resolv.Object, check *resolv.Collision) (float64, bool) {
 	if physics.OnGround != nil {
