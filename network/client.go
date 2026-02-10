@@ -172,6 +172,12 @@ func (c *Client) Level() string {
 	return c.level
 }
 
+func (c *Client) TickRate() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.tickRate
+}
+
 // LatestSnapshot returns the most recent WorldSnapshot, or nil. Non-blocking.
 func (c *Client) LatestSnapshot() *esync.WorldSnapshot {
 	select {

@@ -390,6 +390,15 @@ type NetworkConfig struct {
 	MasterServerURL string
 }
 
+// NetcodeConfig contains client-side prediction and reconciliation settings.
+type NetcodeConfig struct {
+	SnapThreshold      float64 // Snap to server position if error exceeds this (pixels)
+	SmoothThreshold    float64 // Ignore error below this (pixels)
+	SmoothFactor       float64 // Lerp speed for corrections between smooth and snap thresholds
+	VelocityBlendRate  float64 // Lerp rate for velocity blending on medium corrections (0-1)
+	MaxExtrapFrames    float64 // Max frames to extrapolate remote players beyond last snapshot
+}
+
 // Config holds general game configuration
 type Config struct {
 	Width  int
@@ -421,10 +430,12 @@ var Match MatchConfig
 var Network NetworkConfig
 var Pathfinding PathfindingConfig
 var BotCombat BotCombatConfig
+var Netcode NetcodeConfig
 
 // DebugConfig contains debug/testing command-line options
 type DebugConfig struct {
-	SkipMenu bool // Skip menu and go directly to game
+	SkipMenu         bool // Skip menu and go directly to game
+	ShowNetworkDebug bool // Show direction dot + network ID labels
 }
 
 // MessageConfig contains message popup configuration
@@ -954,5 +965,14 @@ func init() {
 		GameVersion:     "0.1.0",
 		MoveSpeed:       3.0,
 		MasterServerURL: "http://localhost:8080",
+	}
+
+	// Netcode Config (client-side prediction, tuned for 60 Hz + gravity parity)
+	Netcode = NetcodeConfig{
+		SnapThreshold:     15.0, // Snap if prediction error > 15 pixels
+		SmoothThreshold:   0.5,  // Ignore error below 0.5 pixels (near-zero with parity fix)
+		SmoothFactor:      0.6,  // Faster convergence for tighter corrections
+		VelocityBlendRate: 0.6,  // Faster velocity blend
+		MaxExtrapFrames:   3.0,  // 50ms jitter buffer still appropriate at 60 Hz
 	}
 }

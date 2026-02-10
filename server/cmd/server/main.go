@@ -13,7 +13,7 @@ import (
 
 func main() {
 	port := flag.Uint("port", 7373, "Server port")
-	tickRate := flag.Int("tickrate", 20, "Server tick rate (updates per second)")
+	tickRate := flag.Int("tickrate", 60, "Server tick rate (updates per second)")
 	name := flag.String("name", "Doomerang Server", "Server display name")
 	version := flag.String("version", "", "Required client version (empty = accept any)")
 	assetsDir := flag.String("assets", "assets", "Path to assets directory")

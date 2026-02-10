@@ -274,6 +274,7 @@ func (s *Server) onPlayerInput(client *router.NetworkClient, input messages.Play
 		}
 		pp.Direction = input.Direction
 		pp.JumpPressed = input.Actions[netconfig.ActionJump]
+		pp.LastInputSeq = input.Sequence
 
 		// Update facing direction in NetPlayerState
 		if input.Direction != 0 && s.world.Valid(entity) {

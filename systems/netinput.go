@@ -2,35 +2,41 @@ package systems
 
 import (
 	"log"
+	"math"
 	"time"
 
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/shared/messages"
+	"github.com/automoto/doomerang-mp/shared/netcomponents"
+	"github.com/automoto/doomerang-mp/shared/netconfig"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/leap-fish/necs/esync"
+	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"
 )
 
-const resendInterval = 100 * time.Millisecond
+const resendInterval = 50 * time.Millisecond
 
 type netInputState struct {
 	seq            uint32
 	lastDirection  int
-	lastActions    map[cfg.ActionID]bool
+	lastActions    map[netconfig.ActionID]bool
 	lastSendTime   time.Time
-	currentActions map[cfg.ActionID]bool // reused each tick to avoid allocation
+	currentActions map[netconfig.ActionID]bool // reused each tick to avoid allocation
 }
 
-// NewNetworkInputSystem returns an ECS system that polls keyboard input (WASD scheme)
-// and sends PlayerInput messages to the server when the input state changes.
-func NewNetworkInputSystem(sendFn func(any) error) func(*ecs.ECS) {
+// NewNetworkInputSystem returns an ECS system that polls keyboard input,
+// applies it locally for prediction, and sends PlayerInput messages to the
+// server when the input state changes.
+func NewNetworkInputSystem(sendFn func(any) error, prediction *NetPrediction, localNetID func() esync.NetworkId) func(*ecs.ECS) {
 	state := &netInputState{
-		lastActions:    make(map[cfg.ActionID]bool),
-		currentActions: make(map[cfg.ActionID]bool),
+		lastActions:    make(map[netconfig.ActionID]bool),
+		currentActions: make(map[netconfig.ActionID]bool),
 	}
 
 	bindings := cfg.ControlSchemeBindings[cfg.ControlSchemeB]
 
-	return func(_ *ecs.ECS) {
+	return func(e *ecs.ECS) {
 		dir := 0
 		leftPressed := anyKeyPressed(bindings[cfg.ActionMoveLeft])
 		rightPressed := anyKeyPressed(bindings[cfg.ActionMoveRight])
@@ -41,10 +47,10 @@ func NewNetworkInputSystem(sendFn func(any) error) func(*ecs.ECS) {
 		}
 
 		actions := state.currentActions
-		actions[cfg.ActionJump] = anyKeyPressed(bindings[cfg.ActionJump])
-		actions[cfg.ActionAttack] = anyKeyPressed(bindings[cfg.ActionAttack])
-		actions[cfg.ActionBoomerang] = anyKeyPressed(bindings[cfg.ActionBoomerang])
-		actions[cfg.ActionCrouch] = anyKeyPressed(bindings[cfg.ActionCrouch])
+		actions[netconfig.ActionJump] = anyKeyPressed(bindings[cfg.ActionJump])
+		actions[netconfig.ActionAttack] = anyKeyPressed(bindings[cfg.ActionAttack])
+		actions[netconfig.ActionBoomerang] = anyKeyPressed(bindings[cfg.ActionBoomerang])
+		actions[netconfig.ActionCrouch] = anyKeyPressed(bindings[cfg.ActionCrouch])
 
 		changed := dir != state.lastDirection
 		if !changed {
@@ -56,18 +62,23 @@ func NewNetworkInputSystem(sendFn func(any) error) func(*ecs.ECS) {
 			}
 		}
 
-		now := time.Now()
-		if !changed && now.Sub(state.lastSendTime) < resendInterval {
-			return
-		}
-
+		// Build the input message (needed for both prediction and sending)
 		state.seq++
 		input := messages.NewPlayerInput(state.seq)
 		input.Direction = dir
 		for k, v := range actions {
 			input.Actions[k] = v
 		}
-		input.Timestamp = now.UnixMilli()
+		input.Timestamp = time.Now().UnixMilli()
+
+		// Apply prediction locally every frame
+		applyPrediction(e.World, prediction, input, localNetID())
+
+		// Only send to server when input changes or resend interval elapses
+		now := time.Now()
+		if !changed && now.Sub(state.lastSendTime) < resendInterval {
+			return
+		}
 
 		if err := sendFn(input); err != nil {
 			log.Printf("[netinput] send error: %v", err)
@@ -78,6 +89,40 @@ func NewNetworkInputSystem(sendFn func(any) error) func(*ecs.ECS) {
 			state.lastActions[k] = v
 		}
 		state.lastSendTime = now
+	}
+}
+
+// applyPrediction finds the local player entity and runs one prediction step.
+func applyPrediction(world donburi.World, pred *NetPrediction, input messages.PlayerInput, localID esync.NetworkId) {
+	if pred == nil || localID == 0 {
+		return
+	}
+
+	entity := esync.FindByNetworkId(world, localID)
+	if !world.Valid(entity) {
+		return
+	}
+	entry := world.Entry(entity)
+	if !entry.HasComponent(netcomponents.NetPosition) {
+		return
+	}
+
+	pos := netcomponents.NetPosition.Get(entry)
+	pred.PredictStep(input, pos)
+
+	// Predict animation state locally for instant visual feedback (matches server deriveState)
+	if entry.HasComponent(netcomponents.NetPlayerState) {
+		state := netcomponents.NetPlayerState.Get(entry)
+		if input.Direction != 0 {
+			state.Direction = input.Direction
+		}
+		if !pred.OnGround {
+			state.StateID = netconfig.Jump
+		} else if math.Abs(pred.VelX) >= 0.1 {
+			state.StateID = netconfig.Running
+		} else {
+			state.StateID = netconfig.Idle
+		}
 	}
 }
 

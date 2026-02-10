@@ -22,7 +22,15 @@ func NewServerLevel(data *leveldata.CollisionData) *ServerLevel {
 	space := resolv.NewSpace(data.MapWidth, data.MapHeight, 16, 16)
 
 	for _, r := range data.SolidRects {
-		obj := resolv.NewObject(r.X, r.Y, r.W, r.H, "solid")
+		var obj *resolv.Object
+		switch r.SlopeType {
+		case tagSlope45UpR:
+			obj = resolv.NewObject(r.X, r.Y, r.W, r.H, tagRamp, tagSlope45UpR)
+		case tagSlope45UpL:
+			obj = resolv.NewObject(r.X, r.Y, r.W, r.H, tagRamp, tagSlope45UpL)
+		default:
+			obj = resolv.NewObject(r.X, r.Y, r.W, r.H, tagSolid)
+		}
 		obj.SetShape(resolv.NewRectangle(0, 0, r.W, r.H))
 		space.Add(obj)
 	}

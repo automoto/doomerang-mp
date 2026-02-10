@@ -12,6 +12,9 @@ type PlayerPhysics struct {
 	Direction      int
 	JumpPressed    bool
 	JumpWasPressed bool // previous frame, for edge detection
+
+	// Last processed input sequence (for client-side prediction reconciliation)
+	LastInputSeq uint32
 }
 
 func newPlayerPhysics(level *ServerLevel, spawnX, spawnY float64) *PlayerPhysics {
