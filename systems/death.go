@@ -4,6 +4,7 @@ import (
 	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
+	"github.com/automoto/doomerang-mp/shared/mathutil"
 	"github.com/automoto/doomerang-mp/tags"
 	"github.com/solarlune/resolv"
 	"github.com/yohamta/donburi"
@@ -270,12 +271,12 @@ func findBestRespawnPoint(ecs *ecs.ECS, deadPlayer *donburi.Entry, spawns []asse
 		}
 
 		// Calculate distance from death location
-		deathDist := distance(spawn.X, spawn.Y, deadX, deadY)
+		deathDist := mathutil.Distance(spawn.X, spawn.Y, deadX, deadY)
 
 		// Calculate minimum distance from living players
 		minPlayerDist := 9999.0
 		for _, pos := range livingPositions {
-			d := distance(spawn.X, spawn.Y, pos.x, pos.y)
+			d := mathutil.Distance(spawn.X, spawn.Y, pos.x, pos.y)
 			if d < minPlayerDist {
 				minPlayerDist = d
 			}

@@ -324,6 +324,10 @@ type MatchConfig struct {
 	MaxPlayers         int        // Maximum players per match
 	MinPlayersToStart  int        // Minimum players to start match
 	ResultsDisplayTime int        // Frames to display results before returning to menu
+	RoundsToWin        int        // Rounds needed to win match (best-of-N)
+	LivesPerRound      int        // Lives each player gets per round
+	RoundEndDelay      int        // Frames to display round end overlay
+	RoundDuration      int        // Duration of each round in frames
 }
 
 // DeathZoneConfig contains death zone effect configuration
@@ -936,7 +940,11 @@ func init() {
 		DefaultGameMode:    GameModeFreeForAll,
 		MaxPlayers:         4,
 		MinPlayersToStart:  1,
-		ResultsDisplayTime: 60 * 5, // 5 seconds to show results
+		ResultsDisplayTime: 60 * 5,   // 5 seconds to show results
+		RoundsToWin:        2,        // First to 2 rounds wins
+		LivesPerRound:      3,        // 3 lives per round
+		RoundEndDelay:      60 * 3,   // 3 seconds between rounds
+		RoundDuration:      60 * 120, // 2 minutes per round
 	}
 
 	// Pathfinding Config (derived from Player physics)

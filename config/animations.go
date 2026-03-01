@@ -32,6 +32,9 @@ var CharacterAnimations = map[string]map[StateID]AnimationDef{
 		Throw:                  {First: 0, Last: 4, Step: 1, Speed: 5},
 		Walk:                   {First: 0, Last: 7, Step: 1, Speed: 5},
 		WallSlide:              {First: 0, Last: 5, Step: 1, Speed: 5},
+		StateAttackingPunch:    {First: 0, Last: 5, Step: 1, Speed: 4}, // Same as Punch01
+		StateAttackingKick:     {First: 0, Last: 8, Step: 1, Speed: 4}, // Same as Kick01
+		StateAttackingJump:     {First: 0, Last: 7, Step: 1, Speed: 3}, // Same as Kick02
 		StateChargingBoomerang: {First: 0, Last: 0, Step: 1, Speed: 0},
 		StateChargingAttack:    {First: 0, Last: 0, Step: 1, Speed: 0}, // Use idle frame while charging
 		StateSliding:           {First: 0, Last: 3, Step: 1, Speed: 6}, // Custom slide animation (4 frames)

@@ -58,6 +58,28 @@ type BoomerangHitEvent struct {
 	KnockbackY          float64
 }
 
+// MeleeAttackEvent is broadcast when a player initiates a melee attack (for SFX).
+type MeleeAttackEvent struct {
+	AttackerNetworkID uint
+	IsPunch           bool // true = punch, false = kick
+}
+
+// MeleeHitEvent is broadcast when a melee attack connects
+type MeleeHitEvent struct {
+	AttackerNetworkID uint
+	TargetNetworkID   uint
+	HitX, HitY       float64
+	Damage            int
+	KnockbackX        float64
+	KnockbackY        float64
+}
+
+// RespawnEvent is broadcast when a player respawns after death
+type RespawnEvent struct {
+	PlayerNetworkID uint
+	X, Y            float64
+}
+
 // MatchStateChangeEvent is broadcast when match state changes
 type MatchStateChangeEvent struct {
 	NewState int     // MatchState enum value

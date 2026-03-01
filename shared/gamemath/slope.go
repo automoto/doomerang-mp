@@ -1,7 +1,7 @@
 package gamemath
 
 import (
-	"github.com/automoto/doomerang-mp/mathutil"
+	"github.com/automoto/doomerang-mp/shared/mathutil"
 	"github.com/solarlune/resolv"
 )
 

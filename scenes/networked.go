@@ -9,8 +9,8 @@ import (
 
 	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/components"
-	"github.com/automoto/doomerang-mp/mathutil"
 	"github.com/automoto/doomerang-mp/network"
+	"github.com/automoto/doomerang-mp/shared/mathutil"
 	"github.com/automoto/doomerang-mp/shared/netcomponents"
 	"github.com/automoto/doomerang-mp/shared/netconfig"
 	"github.com/automoto/doomerang-mp/systems"
@@ -78,6 +78,11 @@ func (ns *NetworkedScene) configure() {
 
 	ns.ecsWorld = ecs.NewECS(donburi.NewWorld())
 
+	// Mark as network mode for systems
+	world := ns.ecsWorld.World
+	ncEntry := world.Entry(world.Create(components.NetworkConfig))
+	components.NetworkConfig.Set(ncEntry, &components.NetworkConfigData{IsNetwork: true})
+
 	// Load level matching the server's active level
 	levelIndex := findLevelIndex(ns.netClient.Level())
 	factory.CreateLevelAtIndex(ns.ecsWorld, levelIndex)
@@ -113,6 +118,8 @@ func (ns *NetworkedScene) configure() {
 	ns.ecsWorld.AddSystem(systems.NewNetPlayerEffectsSystem(ns.prediction, localNetID))
 	ns.ecsWorld.AddSystem(systems.NewNetCameraSystem(localNetID))
 	ns.ecsWorld.AddSystem(systems.NewNetBoomerangEventSystem(ns.netClient))
+	ns.ecsWorld.AddSystem(systems.NewNetCombatEventSystem(ns.netClient))
+	ns.ecsWorld.AddSystem(systems.NewNetMatchEventSystem(ns.netClient))
 	ns.ecsWorld.AddSystem(systems.UpdateEffects)
 	ns.ecsWorld.AddSystem(systems.UpdateAudio)
 	ns.ecsWorld.AddRenderer(cfg.Default, systems.DrawLevel)
@@ -272,7 +279,10 @@ func (ns *NetworkedScene) reconcileLocal(entry *donburi.Entry, components []any)
 		localState.IsLocal = true
 
 		// Let locked animation states play to completion before accepting server transitions
-		locked := localState.StateID == netconfig.Throw || localState.StateID == netconfig.Hit
+		locked := localState.StateID == netconfig.Throw || localState.StateID == netconfig.Hit ||
+			localState.StateID == netconfig.StateAttackingPunch || localState.StateID == netconfig.StateAttackingKick ||
+			localState.StateID == netconfig.StateAttackingJump || localState.StateID == netconfig.Stunned ||
+			localState.StateID == netconfig.Die
 		if locked && serverState.StateID != localState.StateID && animStillPlaying(entry) {
 			// Keep local state — animation still playing
 		} else {
@@ -373,6 +383,7 @@ func initNetPlayerAnimation(entry *donburi.Entry) {
 	entry.AddComponent(components.Animation)
 	components.Animation.SetValue(entry, *animData)
 
+	entry.AddComponent(components.Flash)
 	entry.AddComponent(components.NetInterp)
 }
 
@@ -418,6 +429,8 @@ func componentTypesFromInstances(components []any) []donburi.IComponentType {
 			ctypes = append(ctypes, netcomponents.NetPlayerState)
 		case netcomponents.NetBoomerangData:
 			ctypes = append(ctypes, netcomponents.NetBoomerang)
+		case netcomponents.NetGameStateData:
+			ctypes = append(ctypes, netcomponents.NetGameState)
 		}
 	}
 	return ctypes
@@ -445,5 +458,10 @@ func applyComponentToEntry(entry *donburi.Entry, data any) {
 			entry.AddComponent(netcomponents.NetBoomerang)
 		}
 		netcomponents.NetBoomerang.SetValue(entry, v)
+	case netcomponents.NetGameStateData:
+		if !entry.HasComponent(netcomponents.NetGameState) {
+			entry.AddComponent(netcomponents.NetGameState)
+		}
+		netcomponents.NetGameState.SetValue(entry, v)
 	}
 }

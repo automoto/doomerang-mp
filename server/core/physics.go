@@ -15,6 +15,10 @@ import (
 // server tick. Sub-stepping ensures the same physics constants that were tuned
 // for 60 Hz work correctly at the server's lower tick rate.
 func (s *Server) updatePhysics() {
+	// Only run physics during active gameplay
+	if s.match.State != netcomponents.MatchStatePlaying {
+		return
+	}
 	stepsPerTick := 60 / s.loop.tickRate // e.g. 2 at 30 Hz
 	if stepsPerTick < 1 {
 		stepsPerTick = 1
@@ -22,7 +26,7 @@ func (s *Server) updatePhysics() {
 
 	for step := 0; step < stepsPerTick; step++ {
 		for entity, pp := range s.playerPhysics {
-			if !s.world.Valid(entity) {
+			if !s.world.Valid(entity) || pp.Dead {
 				continue
 			}
 			entry := s.world.Entry(entity)
@@ -36,7 +40,7 @@ func (s *Server) updatePhysics() {
 
 	// After all sub-steps, write final positions and derive state.
 	for entity, pp := range s.playerPhysics {
-		if !s.world.Valid(entity) {
+		if !s.world.Valid(entity) || pp.Dead {
 			continue
 		}
 		entry := s.world.Entry(entity)

@@ -6,6 +6,8 @@ import (
 	"log"
 	"sync"
 
+	"github.com/automoto/doomerang-mp/components"
+	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/shared/messages"
 	"github.com/automoto/doomerang-mp/shared/netcomponents"
 	"github.com/automoto/doomerang-mp/shared/netconfig"
@@ -36,9 +38,12 @@ type Server struct {
 	boomerangPhysics map[donburi.Entity]*BoomerangPhysics
 	playerBoomerangs map[donburi.Entity]donburi.Entity // player → active boomerang
 
-	clientEntities map[*router.NetworkClient]donburi.Entity
-	pendingClients map[*router.NetworkClient]bool
-	mu             sync.RWMutex
+	clientEntities   map[*router.NetworkClient]donburi.Entity
+	pendingClients   map[*router.NetworkClient]bool
+	clientNetworkIDs map[*router.NetworkClient]uint32
+	networkIDClients map[uint32]*router.NetworkClient
+	match            *ServerMatch
+	mu               sync.RWMutex
 
 	cmdCh chan serverCmd
 }
@@ -61,12 +66,15 @@ func NewServer(tickRate int, name, version string, levels map[string]*ServerLeve
 		boomerangPhysics: make(map[donburi.Entity]*BoomerangPhysics),
 		playerBoomerangs: make(map[donburi.Entity]donburi.Entity),
 		clientEntities:   make(map[*router.NetworkClient]donburi.Entity),
-		pendingClients: make(map[*router.NetworkClient]bool),
-		cmdCh:          make(chan serverCmd, 64),
+		pendingClients:   make(map[*router.NetworkClient]bool),
+		clientNetworkIDs: make(map[*router.NetworkClient]uint32),
+		networkIDClients: make(map[uint32]*router.NetworkClient),
+		cmdCh:            make(chan serverCmd, 64),
 	}
 	s.loop = NewGameLoop(s, tickRate)
 
 	srvsync.UseEsync(world)
+	s.match = NewServerMatch(s)
 	s.setupRouterCallbacks()
 
 	return s
@@ -105,6 +113,28 @@ func (s *Server) PlayerCount() int {
 	return len(s.clientEntities)
 }
 
+func (s *Server) World() donburi.World {
+	return s.world
+}
+
+func (s *Server) ActiveLevel() *ServerLevel {
+	return s.activeLevel
+}
+
+func (s *Server) Match() *ServerMatch {
+	return s.match
+}
+
+func (s *Server) GetPlayerPhysics(entity donburi.Entity) *PlayerPhysics {
+	return s.playerPhysics[entity]
+}
+
+func (s *Server) SpawnBot(name string, difficulty cfg.BotDifficulty) {
+	s.cmdCh <- func() {
+		s.spawnBot(name, difficulty)
+	}
+}
+
 func (s *Server) setupRouterCallbacks() {
 	router.OnConnect(func(client *router.NetworkClient) {
 		s.onConnect(client)
@@ -120,6 +150,10 @@ func (s *Server) setupRouterCallbacks() {
 
 	router.On(func(client *router.NetworkClient, input messages.PlayerInput) {
 		s.onPlayerInput(client, input)
+	})
+
+	router.On(func(client *router.NetworkClient, action messages.LobbyAction) {
+		s.onLobbyAction(client, action)
 	})
 
 	router.OnError(func(client *router.NetworkClient, err error) {
@@ -187,7 +221,7 @@ func (s *Server) spawnPlayer(client *router.NetworkClient, req messages.JoinRequ
 	netcomponents.NetVelocity.Set(entry, &netcomponents.NetVelocityData{})
 	netcomponents.NetPlayerState.Set(entry, &netcomponents.NetPlayerStateData{
 		Direction: 1,
-		Health:    100,
+		Health:    cfg.Player.Health,
 	})
 
 	// Create server-side physics for this player
@@ -216,6 +250,8 @@ func (s *Server) spawnPlayer(client *router.NetworkClient, req messages.JoinRequ
 	s.mu.Lock()
 	delete(s.pendingClients, client)
 	s.clientEntities[client] = entity
+	s.clientNetworkIDs[client] = uint32(*networkID)
+	s.networkIDClients[uint32(*networkID)] = client
 	s.mu.Unlock()
 
 	_ = client.SendMessage(messages.JoinAccepted{
@@ -229,6 +265,15 @@ func (s *Server) spawnPlayer(client *router.NetworkClient, req messages.JoinRequ
 
 	log.Printf("Player %q joined as entity networkID=%d (client %s)",
 		req.PlayerName, *networkID, client.Id())
+
+	// Assign to lobby slot
+	s.cmdCh <- func() {
+		s.match.OnLobbyAction(uint32(*networkID), messages.LobbyAction{
+			Action: "pick_slot",
+			Value:  s.match.FirstEmptySlot(),
+			String: req.PlayerName,
+		})
+	}
 }
 
 // broadcastEvent sends a message to all connected clients.
@@ -253,6 +298,10 @@ func (s *Server) onDisconnect(client *router.NetworkClient, err error) {
 	if exists {
 		delete(s.clientEntities, client)
 	}
+	if nid, ok := s.clientNetworkIDs[client]; ok {
+		delete(s.networkIDClients, nid)
+		delete(s.clientNetworkIDs, client)
+	}
 	s.mu.Unlock()
 
 	if !exists {
@@ -269,6 +318,13 @@ func (s *Server) onDisconnect(client *router.NetworkClient, err error) {
 			removePlayerPhysics(s.activeLevel, pp)
 			delete(s.playerPhysics, entity)
 		}
+
+		// Update lobby state
+		entry := s.world.Entry(entity)
+		if nid := esync.GetNetworkId(entry); nid != nil {
+			s.match.OnDisconnect(uint32(*nid))
+		}
+
 		if s.world.Valid(entity) {
 			s.world.Remove(entity)
 			log.Printf("Player entity removed for client %s", client.Id())
@@ -292,6 +348,7 @@ func (s *Server) onPlayerInput(client *router.NetworkClient, input messages.Play
 		}
 		pp.Direction = input.Direction
 		pp.JumpPressed = input.Actions[netconfig.ActionJump]
+		pp.AttackPressed = input.Actions[netconfig.ActionAttack]
 		pp.BoomerangPressed = input.Actions[netconfig.ActionBoomerang]
 		pp.MoveUpPressed = input.Actions[netconfig.ActionMoveUp]
 		pp.CrouchPressed = input.Actions[netconfig.ActionCrouch]
@@ -305,3 +362,206 @@ func (s *Server) onPlayerInput(client *router.NetworkClient, input messages.Play
 		}
 	}
 }
+
+func (s *Server) onLobbyAction(client *router.NetworkClient, action messages.LobbyAction) {
+	s.mu.RLock()
+	entity, exists := s.clientEntities[client]
+	s.mu.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	s.cmdCh <- func() {
+		entry := s.world.Entry(entity)
+		nid := esync.GetNetworkId(entry)
+		if nid == nil {
+			return
+		}
+		s.match.OnLobbyAction(uint32(*nid), action)
+	}
+}
+
+func (s *Server) spawnBot(name string, difficulty cfg.BotDifficulty) {
+	// Pick spawn point
+	spawnX, spawnY := 100.0, 100.0
+	if len(s.activeLevel.SpawnPoints) > 0 {
+		idx := (len(s.clientEntities) + s.botCount()) % len(s.activeLevel.SpawnPoints)
+		sp := s.activeLevel.SpawnPoints[idx]
+		spawnX, spawnY = sp.X, sp.Y
+	}
+
+	entity := s.world.Create(
+		netcomponents.NetPosition,
+		netcomponents.NetVelocity,
+		netcomponents.NetPlayerState,
+		components.Player,
+		components.PlayerInput,
+		components.Bot,
+	)
+
+	entry := s.world.Entry(entity)
+	netcomponents.NetPosition.Set(entry, &netcomponents.NetPositionData{X: spawnX, Y: spawnY})
+	netcomponents.NetVelocity.Set(entry, &netcomponents.NetVelocityData{})
+	netcomponents.NetPlayerState.Set(entry, &netcomponents.NetPlayerStateData{
+		Direction: 1,
+		Health:    cfg.Player.Health,
+		IsBot:     true,
+	})
+
+	playerData := components.Player.Get(entry)
+	playerData.PlayerIndex = 4 + s.botCount() // Bots indices start at 4
+
+	botData := components.Bot.Get(entry)
+	botData.Difficulty = difficulty
+	// Initialize bot behavior from config
+	if config, ok := cfg.Bot.Difficulties[difficulty]; ok {
+		botData.ReactionDelay = config.ReactionDelay
+		botData.AttackRange = config.AttackRange
+		botData.RetreatThreshold = config.RetreatThreshold
+	}
+
+	// Create server-side physics for this bot
+	pp := newPlayerPhysics(s.activeLevel, spawnX, spawnY)
+	s.playerPhysics[entity] = pp
+
+	err := srvsync.NetworkSync(s.world, &entity,
+		netcomponents.NetPosition,
+		netcomponents.NetVelocity,
+		netcomponents.NetPlayerState,
+	)
+	if err != nil {
+		log.Printf("Failed to setup network sync for bot: %v", err)
+		return
+	}
+
+	networkID := esync.GetNetworkId(entry)
+	log.Printf("Bot %q spawned as entity networkID=%d", name, *networkID)
+}
+
+func (s *Server) ClearAllPlayers() {
+	// First destroy all boomerangs
+	for bEntity := range s.boomerangPhysics {
+		s.destroyBoomerang(bEntity)
+	}
+
+	// Remove all player entities and their physics
+	for entity, pp := range s.playerPhysics {
+		removePlayerPhysics(s.activeLevel, pp)
+		if s.world.Valid(entity) {
+			s.world.Remove(entity)
+		}
+	}
+
+	// Clear maps
+	clear(s.playerPhysics)
+	clear(s.boomerangPhysics)
+	clear(s.playerBoomerangs)
+	// We do NOT clear clientEntities because we want to keep the connection -> entity mapping
+	// but we need to update the entity in that map if we spawn new ones.
+}
+
+func (s *Server) SpawnPlayerAtSlot(slotIdx int, slot messages.LobbySlot) {
+	spawnX, spawnY := 100.0, 100.0
+	if len(s.activeLevel.SpawnPoints) > 0 {
+		idx := slotIdx % len(s.activeLevel.SpawnPoints)
+		sp := s.activeLevel.SpawnPoints[idx]
+		spawnX, spawnY = sp.X, sp.Y
+	}
+
+	if slot.Type == 1 { // Human
+		entity := s.world.Create(
+			netcomponents.NetPosition,
+			netcomponents.NetVelocity,
+			netcomponents.NetPlayerState,
+			components.Player,
+			components.PlayerInput,
+		)
+
+		entry := s.world.Entry(entity)
+		netcomponents.NetPosition.Set(entry, &netcomponents.NetPositionData{X: spawnX, Y: spawnY})
+		netcomponents.NetVelocity.Set(entry, &netcomponents.NetVelocityData{})
+		netcomponents.NetPlayerState.Set(entry, &netcomponents.NetPlayerStateData{
+			Direction:   1,
+			Health:      cfg.Player.Health,
+			Lives:       cfg.Match.LivesPerRound,
+			PlayerIndex: slotIdx,
+		})
+
+		playerData := components.Player.Get(entry)
+		playerData.PlayerIndex = slotIdx
+
+		pp := newPlayerPhysics(s.activeLevel, spawnX, spawnY)
+		s.playerPhysics[entity] = pp
+
+		_ = srvsync.NetworkSync(s.world, &entity,
+			netcomponents.NetPosition,
+			netcomponents.NetVelocity,
+			netcomponents.NetPlayerState,
+		)
+
+		// Update mapping in clientEntities
+		s.mu.Lock()
+		if client, ok := s.networkIDClients[slot.PlayerID]; ok {
+			s.clientEntities[client] = entity
+			log.Printf("Re-associated client %s (nid=%d) with new entity for slot %d", client.Id(), slot.PlayerID, slotIdx)
+		} else {
+			log.Printf("Warning: Could not find client for nid=%d during slot spawning", slot.PlayerID)
+		}
+		s.mu.Unlock()
+
+	} else if slot.Type == 2 { // Bot
+		entity := s.world.Create(
+			netcomponents.NetPosition,
+			netcomponents.NetVelocity,
+			netcomponents.NetPlayerState,
+			components.Player,
+			components.PlayerInput,
+			components.Bot,
+		)
+
+		entry := s.world.Entry(entity)
+		netcomponents.NetPosition.Set(entry, &netcomponents.NetPositionData{X: spawnX, Y: spawnY})
+		netcomponents.NetVelocity.Set(entry, &netcomponents.NetVelocityData{})
+		netcomponents.NetPlayerState.Set(entry, &netcomponents.NetPlayerStateData{
+			Direction:   1,
+			Health:      cfg.Player.Health,
+			Lives:       cfg.Match.LivesPerRound,
+			PlayerIndex: slotIdx,
+			IsBot:       true,
+		})
+
+		playerData := components.Player.Get(entry)
+		playerData.PlayerIndex = slotIdx
+
+		botData := components.Bot.Get(entry)
+		if config, ok := cfg.Bot.Difficulties[cfg.BotDifficulty(slot.Difficulty)]; ok {
+			botData.ReactionDelay = config.ReactionDelay
+			botData.AttackRange = config.AttackRange
+			botData.RetreatThreshold = config.RetreatThreshold
+		}
+
+		pp := newPlayerPhysics(s.activeLevel, spawnX, spawnY)
+		s.playerPhysics[entity] = pp
+
+		_ = srvsync.NetworkSync(s.world, &entity,
+			netcomponents.NetPosition,
+			netcomponents.NetVelocity,
+			netcomponents.NetPlayerState,
+		)
+
+		// Store bot's network ID into slot for round system lookups
+		if nid := esync.GetNetworkId(s.world.Entry(entity)); nid != nil {
+			s.match.Slots[slotIdx].PlayerID = uint32(*nid)
+		}
+	}
+}
+
+func (s *Server) botCount() int {
+	count := 0
+	components.Bot.Each(s.world, func(entry *donburi.Entry) {
+		count++
+	})
+	return count
+}
+

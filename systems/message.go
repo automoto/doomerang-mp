@@ -1,12 +1,12 @@
 package systems
 
 import (
-	"math"
 	"strings"
 
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/fonts"
+	"github.com/automoto/doomerang-mp/shared/mathutil"
 	"github.com/automoto/doomerang-mp/tags"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text" //nolint:staticcheck // TODO: migrate to text/v2
@@ -51,9 +51,7 @@ func UpdateMessage(ecs *ecs.ECS) {
 		}
 
 		// Calculate distance to player center
-		dx := playerCenterX - msg.X
-		dy := playerCenterY - msg.Y
-		dist := math.Sqrt(dx*dx + dy*dy)
+		dist := mathutil.Distance(playerCenterX, playerCenterY, msg.X, msg.Y)
 
 		if dist <= cfg.Message.ActivationRadius {
 			// Activate this message

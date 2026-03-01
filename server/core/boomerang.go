@@ -381,6 +381,16 @@ func (s *Server) hitPlayer(bEntity donburi.Entity, bp *BoomerangPhysics, targetE
 		KnockbackY:        knockY,
 	})
 
+	// Check for death
+	if targetEntry.HasComponent(netcomponents.NetPlayerState) {
+		state := netcomponents.NetPlayerState.Get(targetEntry)
+		if state.Health <= 0 {
+			if targetPP, ok := s.playerPhysics[targetEntity]; ok {
+				s.handlePlayerDeath(targetEntity, targetPP, bp.OwnerNetworkID)
+			}
+		}
+	}
+
 	// Pierce: switch to inbound after pierce distance
 	bp.PierceDistance -= 12 // reduce per hit
 	if bp.PierceDistance <= 0 {

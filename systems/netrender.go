@@ -3,6 +3,7 @@ package systems
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"strconv"
 
 	"github.com/automoto/doomerang-mp/assets"
@@ -17,6 +18,16 @@ import (
 	"github.com/yohamta/donburi"
 	"github.com/yohamta/donburi/ecs"
 )
+
+const (
+	netHudBarWidth  = 100
+	netHudBarHeight = 10
+	netHudMargin    = 10
+	netLivesMargin  = 3
+)
+
+var netHeartIcon *ebiten.Image
+var netHudDrawOp = &ebiten.DrawImageOptions{}
 
 // NewNetInterpSystem returns an interpolation system that uses the server's tick
 // rate to compute the interpolation step dynamically instead of hardcoding 1/3.
@@ -130,7 +141,6 @@ func DrawNetworkedPlayers(e *ecs.ECS, screen *ebiten.Image) {
 
 	collisionW := float64(cfg.Player.CollisionWidth)
 	collisionH := float64(cfg.Player.CollisionHeight)
-	colorIndex := 0
 
 	esync.NetworkEntityQuery.Each(e.World, func(entry *donburi.Entry) {
 		if !entry.HasComponent(netcomponents.NetPosition) {
@@ -146,13 +156,9 @@ func DrawNetworkedPlayers(e *ecs.ECS, screen *ebiten.Image) {
 		}
 
 		// Determine player color index for tinting
-		isLocal := state != nil && state.IsLocal
 		playerColorIdx := 0
-		if isLocal {
-			playerColorIdx = 0
-		} else {
-			playerColorIdx = colorIndex % len(cfg.PlayerColors.Colors)
-			colorIndex++
+		if state != nil {
+			playerColorIdx = state.PlayerIndex
 		}
 
 		// Try to render animated sprite
@@ -184,6 +190,15 @@ func DrawNetworkedPlayers(e *ecs.ECS, screen *ebiten.Image) {
 				if img != nil {
 					drawOp.GeoM.Reset()
 					drawOp.ColorScale.Reset()
+
+					// Damage flash tinting
+					if entry.HasComponent(components.Flash) {
+						flash := components.Flash.Get(entry)
+						if flash.Duration > 0 {
+							drawOp.ColorScale.Scale(flash.R, flash.G, flash.B, 1)
+							flash.Duration--
+						}
+					}
 
 					// Bottom-center anchor (feet at collision box bottom-center)
 					drawOp.GeoM.Translate(-float64(animData.FrameWidth)/2, -float64(animData.FrameHeight))
@@ -222,7 +237,7 @@ func DrawNetworkedPlayers(e *ecs.ECS, screen *ebiten.Image) {
 		// Fallback to colored rectangle if no animation available
 		if !drewSprite {
 			var rectColor = cfg.PlayerColors.Colors[playerColorIdx%len(cfg.PlayerColors.Colors)].RGBA
-			if isLocal {
+			if state != nil && state.IsLocal {
 				rectColor = cfg.BrightGreen
 			}
 
@@ -315,15 +330,266 @@ func DrawNetworkedBoomerangs(e *ecs.ECS, screen *ebiten.Image) {
 }
 
 func DrawNetworkHUD(e *ecs.ECS, screen *ebiten.Image) {
-	entityCount := 0
-	var ids []int
-	esync.NetworkEntityQuery.Each(e.World, func(entry *donburi.Entry) {
-		entityCount++
-		if nid := esync.GetNetworkId(entry); nid != nil {
-			ids = append(ids, int(*nid))
-		}
-	})
+	// 1. Get Game State
+	gameEntry, ok := netcomponents.NetGameState.First(e.World)
+	if !ok {
+		return
+	}
+	gs := netcomponents.NetGameState.Get(gameEntry)
 
-	info := fmt.Sprintf("Online - Entities: %d  IDs: %v", entityCount, ids)
-	text.Draw(screen, info, fonts.ExcelSmall.Get(), 4, 12, cfg.LightGreen)
+	width := float64(screen.Bounds().Dx())
+	height := float64(screen.Bounds().Dy())
+
+	// 2. Draw HUD by Match State
+	switch gs.MatchState {
+	case netcomponents.MatchStateWaiting:
+		drawWaitingMessage(screen, "WAITING FOR PLAYERS...", width, height)
+	case netcomponents.MatchStateCountdown:
+		drawNetworkCountdown(screen, gs.TimeRemaining, width, height)
+	case netcomponents.MatchStatePlaying:
+		drawNetworkTimer(screen, gs.TimeRemaining, width)
+	case netcomponents.MatchStateRoundEnd:
+		drawRoundEndOverlay(screen, e, gs, width, height)
+	case netcomponents.MatchStateFinished:
+		drawNetworkResults(screen, gs, width, height)
+	}
+
+	// 3. Draw Player Corner HUD (Health + Lives) for all active players
+	if gs.MatchState == netcomponents.MatchStatePlaying || gs.MatchState == netcomponents.MatchStateCountdown || gs.MatchState == netcomponents.MatchStateRoundEnd {
+		drawAllPlayersCornerHUD(e, screen, gs, width, height)
+	}
+
+	// 4. Debug Info
+	if cfg.Debug.ShowNetworkDebug {
+		entityCount := 0
+		var ids []int
+		esync.NetworkEntityQuery.Each(e.World, func(entry *donburi.Entry) {
+			entityCount++
+			if nid := esync.GetNetworkId(entry); nid != nil {
+				ids = append(ids, int(*nid))
+			}
+		})
+		info := fmt.Sprintf("Online - Entities: %d  IDs: %v", entityCount, ids)
+		text.Draw(screen, info, fonts.ExcelSmall.Get(), 4, 12, cfg.LightGreen)
+	}
+}
+
+func drawWaitingMessage(screen *ebiten.Image, msg string, width, height float64) {
+	fontFace := fonts.ExcelTitle.Get()
+	textWidth := len(msg) * 24
+	x := int(width/2) - textWidth/2
+	y := int(height / 2)
+	text.Draw(screen, msg, fontFace, x, y, cfg.BrightOrange)
+}
+
+func drawNetworkCountdown(screen *ebiten.Image, timeRemaining float64, width, height float64) {
+	seconds := int(timeRemaining) + 1
+	var countStr string
+	if seconds > 0 {
+		countStr = fmt.Sprintf("%d", seconds)
+	} else {
+		countStr = "GO!"
+	}
+
+	fontFace := fonts.ExcelTitle.Get()
+	textWidth := len(countStr) * 24
+	x := int(width/2) - textWidth/2
+	y := int(height / 2)
+
+	textColor := cfg.BrightOrange
+	if seconds <= 0 {
+		textColor = cfg.BrightGreen
+	}
+
+	// Overlay
+	vector.FillRect(screen, 0, 0, float32(width), float32(height), color.RGBA{0, 0, 0, 100}, false)
+	text.Draw(screen, countStr, fontFace, x, y, textColor)
+}
+
+func drawNetworkTimer(screen *ebiten.Image, timeRemaining float64, width float64) {
+	seconds := int(timeRemaining)
+	minutes := seconds / 60
+	secs := seconds % 60
+	timeStr := fmt.Sprintf("%d:%02d", minutes, secs)
+
+	fontFace := fonts.ExcelBold.Get()
+	timerWidth := float32(60)
+	timerX := float32(width/2) - timerWidth/2
+	vector.FillRect(screen, timerX, 5, timerWidth, 20, color.RGBA{0, 0, 0, 180}, false)
+
+	textWidth := len(timeStr) * 8
+	textX := int(width/2) - textWidth/2
+	text.Draw(screen, timeStr, fontFace, textX, 20, cfg.White)
+}
+
+func drawAllPlayersCornerHUD(e *ecs.ECS, screen *ebiten.Image, gs *netcomponents.NetGameStateData, screenWidth, screenHeight float64) {
+	netcomponents.NetPlayerState.Each(e.World, func(entry *donburi.Entry) {
+		state := netcomponents.NetPlayerState.Get(entry)
+		playerIndex := state.PlayerIndex
+
+		// Calculate position based on player index (4 corners)
+		var x, y float32
+		switch playerIndex {
+		case 0: // Top-left
+			x, y = netHudMargin, netHudMargin
+		case 1: // Top-right
+			x, y = float32(screenWidth)-netHudBarWidth-netHudMargin, netHudMargin
+		case 2: // Bottom-left
+			x, y = netHudMargin, float32(screenHeight)-netHudBarHeight-netHudMargin-20
+		case 3: // Bottom-right
+			x, y = float32(screenWidth)-netHudBarWidth-netHudMargin, float32(screenHeight)-netHudBarHeight-netHudMargin-20
+		default:
+			return
+		}
+
+		// Get player color from config
+		playerColor := cfg.PlayerColors.Colors[playerIndex%len(cfg.PlayerColors.Colors)].RGBA
+
+		// Background (dark gray)
+		vector.FillRect(screen, x, y, netHudBarWidth, netHudBarHeight, color.RGBA{40, 40, 40, 255}, false)
+
+		// Current HP (player color)
+		hpRatio := float32(state.Health) / float32(cfg.Player.Health)
+		if hpRatio < 0 { hpRatio = 0 }
+		vector.FillRect(screen, x, y, netHudBarWidth*hpRatio, netHudBarHeight, playerColor, false)
+
+		// Draw lives counter
+		drawNetworkPlayerLives(state.Lives, screen, x, y+netHudBarHeight+netLivesMargin, playerIndex)
+
+		// Draw Round Win pips
+		drawRoundPips(screen, x, y+netHudBarHeight+netLivesMargin+15, gs.RoundWins[gs.SlotTeams[playerIndex]], gs.RoundsToWin, playerColor, playerIndex >= 2)
+	})
+}
+
+func drawNetworkPlayerLives(lives int, screen *ebiten.Image, startX, startY float32, playerIndex int) {
+	if netHeartIcon == nil {
+		netHeartIcon = assets.GetIconImage("icon_heart.png")
+	}
+	if netHeartIcon == nil { return }
+
+	heartWidth := netHeartIcon.Bounds().Dx()
+	rightSide := playerIndex == 1 || playerIndex == 3
+
+	for i := 0; i < lives; i++ {
+		netHudDrawOp.GeoM.Reset()
+		var heartX float64
+		if rightSide {
+			heartX = float64(startX) + float64(netHudBarWidth) - float64((i+1)*(heartWidth+netLivesMargin))
+		} else {
+			heartX = float64(startX) + float64(i*(heartWidth+netLivesMargin))
+		}
+		netHudDrawOp.GeoM.Translate(heartX, float64(startY))
+		screen.DrawImage(netHeartIcon, netHudDrawOp)
+	}
+}
+
+func drawRoundPips(screen *ebiten.Image, x, y float32, wins, toWin int, teamColor color.RGBA, bottom bool) {
+	const pipSize = 6
+	const pipGap = 4
+
+	cx := x
+	if x > 320 { // Right side
+		cx = x + netHudBarWidth - float32(toWin*(pipSize+pipGap))
+	}
+
+	for p := 0; p < toWin; p++ {
+		if p < wins {
+			vector.FillRect(screen, cx, y, pipSize, pipSize, teamColor, false)
+		} else {
+			vector.FillRect(screen, cx, y, pipSize, pipSize, color.RGBA{60, 60, 60, 255}, false)
+		}
+		cx += pipSize + pipGap
+	}
+}
+
+// drawRoundEndOverlay shows a semi-transparent overlay with round winner info.
+func drawRoundEndOverlay(screen *ebiten.Image, e *ecs.ECS, gs *netcomponents.NetGameStateData, width, height float64) {
+	// Semi-transparent overlay
+	vector.FillRect(screen, 0, 0, float32(width), float32(height), color.RGBA{0, 0, 0, 140}, false)
+
+	titleFont := fonts.ExcelTitle.Get()
+	roundStr := fmt.Sprintf("ROUND %d", gs.CurrentRound)
+	text.Draw(screen, roundStr, titleFont, int(width/2)-len(roundStr)*12, int(height/2)-20, cfg.BrightOrange)
+
+	// Winner name
+	winnerName := ""
+	if gs.WinnerID != 0 {
+		winnerName = getNetworkPlayerName(e, gs.WinnerID)
+	}
+
+	if winnerName != "" {
+		winStr := winnerName + " wins the round!"
+		text.Draw(screen, winStr, fonts.ExcelBold.Get(), int(width/2)-len(winStr)*4, int(height/2)+15, cfg.Yellow)
+	} else {
+		text.Draw(screen, "Draw!", fonts.ExcelBold.Get(), int(width/2)-20, int(height/2)+15, cfg.White)
+	}
+}
+
+func drawNetworkResults(screen *ebiten.Image, gs *netcomponents.NetGameStateData, width, height float64) {
+	// Full dark overlay
+	vector.FillRect(screen, 0, 0, float32(width), float32(height), color.RGBA{0, 0, 0, 200}, false)
+
+	titleFont := fonts.ExcelTitle.Get()
+	title := "MATCH OVER"
+	text.Draw(screen, title, titleFont, int(width/2)-100, 60, cfg.BrightOrange)
+
+	// Winner info
+	winnerName := ""
+	for i := 0; i < 4; i++ {
+		if gs.SlotNetIDs[i] == gs.WinnerID && gs.SlotTypes[i] != 0 {
+			winnerName = gs.SlotNames[i]
+			break
+		}
+	}
+	winnerStr := "TIE!"
+	if winnerName != "" {
+		winnerStr = winnerName + " WINS!"
+	}
+	text.Draw(screen, winnerStr, fonts.ExcelBold.Get(), int(width/2)-len(winnerStr)*4, 100, cfg.Yellow)
+
+	// Show round wins per slot
+	y := 130
+	for slotIdx := 0; slotIdx < 4; slotIdx++ {
+		if gs.SlotTypes[slotIdx] == 0 {
+			continue
+		}
+		name := gs.SlotNames[slotIdx]
+		if name == "" {
+			name = "P" + strconv.Itoa(slotIdx+1)
+		}
+		team := gs.SlotTeams[slotIdx]
+		roundWins := 0
+		if gs.RoundWins != nil {
+			roundWins = gs.RoundWins[team]
+		}
+		kos := 0
+		if gs.Scores != nil {
+			kos = gs.Scores[gs.SlotNetIDs[slotIdx]]
+		}
+
+		playerColor := cfg.PlayerColors.Colors[slotIdx%len(cfg.PlayerColors.Colors)].RGBA
+		line := fmt.Sprintf("%s  Rounds: %d  KOs: %d", name, roundWins, kos)
+		text.Draw(screen, line, fonts.ExcelBold.Get(), int(width/2)-len(line)*4, y, playerColor)
+		y += 22
+	}
+}
+
+func getNetworkPlayerName(e *ecs.ECS, netID uint32) string {
+	if netID == 0 {
+		return "None"
+	}
+	entity := esync.FindByNetworkId(e.World, esync.NetworkId(netID))
+	if !e.World.Valid(entity) {
+		return "P" + strconv.Itoa(int(netID))
+	}
+
+	entry := e.World.Entry(entity)
+	if entry.HasComponent(netcomponents.NetPlayerState) {
+		state := netcomponents.NetPlayerState.Get(entry)
+		if state.IsBot {
+			return "[BOT]"
+		}
+	}
+
+	return "Player " + strconv.Itoa(int(netID))
 }

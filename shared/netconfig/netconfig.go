@@ -13,6 +13,7 @@ const (
 	MatchStateWaiting   MatchStateID = iota // Waiting for players/setup
 	MatchStateCountdown                     // Pre-match countdown (3, 2, 1)
 	MatchStatePlaying                       // Active gameplay
+	MatchStateRoundEnd                      // Between rounds, showing round winner
 	MatchStateFinished                      // Match over, showing results
 )
 

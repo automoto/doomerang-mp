@@ -8,17 +8,19 @@ import (
 )
 
 type GameLoop struct {
-	server   *Server
-	tickRate int
-	running  bool
-	stopChan chan struct{}
+	server    *Server
+	botSystem *BotSystem
+	tickRate  int
+	running   bool
+	stopChan  chan struct{}
 }
 
 func NewGameLoop(server *Server, tickRate int) *GameLoop {
 	return &GameLoop{
-		server:   server,
-		tickRate: tickRate,
-		stopChan: make(chan struct{}),
+		server:    server,
+		botSystem: NewBotSystem(server),
+		tickRate:  tickRate,
+		stopChan:  make(chan struct{}),
 	}
 }
 
@@ -46,8 +48,12 @@ func (g *GameLoop) Stop() {
 }
 
 func (g *GameLoop) tick() {
+	dt := 1.0 / float64(g.tickRate)
 	g.server.ProcessCommands()
+	g.server.Match().Update(dt)
+	g.botSystem.Update()
 	g.server.updatePhysics()
+	g.server.updateCombat()
 
 	if err := srvsync.DoSync(); err != nil {
 		log.Printf("Sync error: %v", err)

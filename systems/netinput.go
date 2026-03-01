@@ -119,7 +119,10 @@ func applyPrediction(world donburi.World, pred *NetPrediction, input messages.Pl
 		state.Direction = input.Direction
 	}
 	// Don't overwrite server-locked states
-	if state.StateID == netconfig.Throw || state.StateID == netconfig.Hit {
+	if state.StateID == netconfig.Throw || state.StateID == netconfig.Hit ||
+		state.StateID == netconfig.StateAttackingPunch || state.StateID == netconfig.StateAttackingKick ||
+		state.StateID == netconfig.StateAttackingJump || state.StateID == netconfig.Stunned ||
+		state.StateID == netconfig.Die {
 		return
 	}
 	if input.Actions[netconfig.ActionBoomerang] {

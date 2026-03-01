@@ -35,6 +35,7 @@ type Client struct {
 	serverName     string
 	tickRate       int
 	level          string
+	levelNames     []string
 	conn           *websocket.Conn
 
 	snapshotCh chan esync.WorldSnapshot // size-1 buffered; latest wins
@@ -43,6 +44,15 @@ type Client struct {
 	throwCh  chan messages.BoomerangThrowEvent
 	catchCh  chan messages.BoomerangCatchEvent
 	hitCh    chan messages.BoomerangHitEvent
+
+	meleeAttackCh chan messages.MeleeAttackEvent
+	meleeHitCh    chan messages.MeleeHitEvent
+	deathCh       chan messages.DeathEvent
+	respawnCh     chan messages.RespawnEvent
+
+	matchCh chan messages.MatchEvent
+	scoreCh chan messages.ScoreEvent
+	lobbyUpdateCh chan messages.LobbyUpdate
 }
 
 func NewClient() *Client {
@@ -53,6 +63,13 @@ func NewClient() *Client {
 		throwCh:    make(chan messages.BoomerangThrowEvent, 4),
 		catchCh:    make(chan messages.BoomerangCatchEvent, 4),
 		hitCh:      make(chan messages.BoomerangHitEvent, 4),
+		meleeAttackCh: make(chan messages.MeleeAttackEvent, 4),
+		meleeHitCh:    make(chan messages.MeleeHitEvent, 4),
+		deathCh:       make(chan messages.DeathEvent, 4),
+		respawnCh:     make(chan messages.RespawnEvent, 4),
+		matchCh:       make(chan messages.MatchEvent, 4),
+		scoreCh:       make(chan messages.ScoreEvent, 4),
+		lobbyUpdateCh: make(chan messages.LobbyUpdate, 4),
 	}
 }
 
@@ -99,6 +116,7 @@ func (c *Client) Connect(address, version, playerName, level string) {
 		c.serverName = msg.ServerName
 		c.tickRate = msg.TickRate
 		c.level = msg.Level
+		c.levelNames = msg.Levels
 		c.state = StateJoinedGame
 		c.mu.Unlock()
 	})
@@ -140,6 +158,55 @@ func (c *Client) Connect(address, version, playerName, level string) {
 	router.On(func(_ *router.NetworkClient, evt messages.BoomerangHitEvent) {
 		select {
 		case c.hitCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.MeleeAttackEvent) {
+		select {
+		case c.meleeAttackCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.MeleeHitEvent) {
+		select {
+		case c.meleeHitCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.DeathEvent) {
+		select {
+		case c.deathCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.RespawnEvent) {
+		select {
+		case c.respawnCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.MatchEvent) {
+		select {
+		case c.matchCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.ScoreEvent) {
+		select {
+		case c.scoreCh <- evt:
+		default:
+		}
+	})
+
+	router.On(func(_ *router.NetworkClient, evt messages.LobbyUpdate) {
+		select {
+		case c.lobbyUpdateCh <- evt:
 		default:
 		}
 	})
@@ -209,6 +276,12 @@ func (c *Client) Level() string {
 	return c.level
 }
 
+func (c *Client) LevelNames() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.levelNames
+}
+
 func (c *Client) TickRate() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -267,6 +340,41 @@ func (c *Client) DrainCatchEvents() []messages.BoomerangCatchEvent {
 // DrainHitEvents returns all pending hit events, non-blocking.
 func (c *Client) DrainHitEvents() []messages.BoomerangHitEvent {
 	return drainChan(c.hitCh)
+}
+
+// DrainMeleeAttackEvents returns all pending melee attack initiation events, non-blocking.
+func (c *Client) DrainMeleeAttackEvents() []messages.MeleeAttackEvent {
+	return drainChan(c.meleeAttackCh)
+}
+
+// DrainMeleeHitEvents returns all pending melee hit events, non-blocking.
+func (c *Client) DrainMeleeHitEvents() []messages.MeleeHitEvent {
+	return drainChan(c.meleeHitCh)
+}
+
+// DrainDeathEvents returns all pending death events, non-blocking.
+func (c *Client) DrainDeathEvents() []messages.DeathEvent {
+	return drainChan(c.deathCh)
+}
+
+// DrainRespawnEvents returns all pending respawn events, non-blocking.
+func (c *Client) DrainRespawnEvents() []messages.RespawnEvent {
+	return drainChan(c.respawnCh)
+}
+
+// DrainMatchEvents returns all pending match events, non-blocking.
+func (c *Client) DrainMatchEvents() []messages.MatchEvent {
+	return drainChan(c.matchCh)
+}
+
+// DrainScoreEvents returns all pending score events, non-blocking.
+func (c *Client) DrainScoreEvents() []messages.ScoreEvent {
+	return drainChan(c.scoreCh)
+}
+
+// DrainLobbyUpdates returns all pending lobby updates, non-blocking.
+func (c *Client) DrainLobbyUpdates() []messages.LobbyUpdate {
+	return drainChan(c.lobbyUpdateCh)
 }
 
 func drainChan[T any](ch chan T) []T {

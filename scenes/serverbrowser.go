@@ -81,10 +81,10 @@ func (s *ServerBrowserScene) Update() {
 	if s.netClient != nil {
 		switch s.netClient.State() {
 		case network.StateJoinedGame:
-			s.browserUI.SetStatus("Joined! Loading game...")
+			s.browserUI.SetStatus("Joined! Entering lobby...")
 			client := s.netClient
 			s.netClient = nil
-			s.sceneChanger.ChangeScene(NewNetworkedScene(s.sceneChanger, client))
+			s.sceneChanger.ChangeScene(NewNetLobbyScene(s.sceneChanger, client))
 			return
 
 		case network.StateError:

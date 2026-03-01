@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -21,6 +22,7 @@ func main() {
 	region := flag.String("region", "", "Server region for display")
 	maxPlayers := flag.Int("maxplayers", 4, "Maximum players")
 	address := flag.String("address", "localhost:7373", "Public address to advertise")
+	numBots := flag.Int("bots", 0, "Number of bots to spawn on startup")
 	flag.Parse()
 
 	if err := protocol.RegisterComponents(); err != nil {
@@ -35,6 +37,11 @@ func main() {
 	log.Printf("Loaded %d levels: %v", len(levelNames), levelNames)
 
 	server := core.NewServer(*tickRate, *name, *version, levels, levelNames)
+
+	// Spawn bots if requested
+	for i := 0; i < *numBots; i++ {
+		server.SpawnBot(fmt.Sprintf("Bot %d", i+1), 1) // 1 = Normal difficulty
+	}
 
 	var reg *core.Registration
 	if *master != "" {

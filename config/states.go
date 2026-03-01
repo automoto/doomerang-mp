@@ -11,6 +11,7 @@ const (
 	MatchStateWaiting   = netconfig.MatchStateWaiting
 	MatchStateCountdown = netconfig.MatchStateCountdown
 	MatchStatePlaying   = netconfig.MatchStatePlaying
+	MatchStateRoundEnd  = netconfig.MatchStateRoundEnd
 	MatchStateFinished  = netconfig.MatchStateFinished
 )
 
