@@ -1,16 +1,17 @@
 package ui
 
 import (
-	"bytes"
 	"fmt"
 	"image/color"
 
+	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/shared/messages"
 	"github.com/ebitenui/ebitenui"
 	"github.com/ebitenui/ebitenui/image"
 	"github.com/ebitenui/ebitenui/widget"
+	"github.com/golang/freetype/truetype"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
-	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font"
 )
 
 // NetLobbyUI holds the ebitenui interface for the network lobby
@@ -70,14 +71,17 @@ func NewNetLobbyUI(localNetID uint32, levelNames []string, onAction func(message
 }
 
 func (lui *NetLobbyUI) loadFonts() {
-	fontSource, err := text.NewGoTextFaceSource(bytes.NewReader(goregular.TTF))
+	fontData, err := truetype.Parse(assets.ExcelFontTTF)
 	if err != nil {
 		panic(err)
 	}
 
-	lui.titleFace = &text.GoTextFace{Source: fontSource, Size: 18}
-	lui.normalFace = &text.GoTextFace{Source: fontSource, Size: 12}
-	lui.smallFace = &text.GoTextFace{Source: fontSource, Size: 10}
+	opts := func(size float64) *truetype.Options {
+		return &truetype.Options{Size: size, Hinting: font.HintingFull}
+	}
+	lui.titleFace = text.NewGoXFace(truetype.NewFace(fontData, opts(20)))
+	lui.normalFace = text.NewGoXFace(truetype.NewFace(fontData, opts(12)))
+	lui.smallFace = text.NewGoXFace(truetype.NewFace(fontData, opts(10)))
 }
 
 func (lui *NetLobbyUI) buildUI() {

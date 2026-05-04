@@ -1,16 +1,17 @@
 package ui
 
 import (
-	"bytes"
 	"fmt"
 	"image/color"
 	"log"
 
+	"github.com/automoto/doomerang-mp/assets"
 	"github.com/ebitenui/ebitenui"
 	"github.com/ebitenui/ebitenui/image"
 	"github.com/ebitenui/ebitenui/widget"
+	"github.com/golang/freetype/truetype"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
-	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font"
 )
 
 // ServerEntry represents a game server returned from the master server.
@@ -67,14 +68,17 @@ func NewServerBrowserUI(onConnect func(address, level string), onGoBack func(), 
 }
 
 func (ui *ServerBrowserUI) loadFonts() {
-	fontSource, err := text.NewGoTextFaceSource(bytes.NewReader(goregular.TTF))
+	fontData, err := truetype.Parse(assets.ExcelFontTTF)
 	if err != nil {
-		log.Fatalf("failed to load UI font: %v", err)
+		log.Fatalf("failed to parse UI font: %v", err)
 	}
 
-	ui.titleFace = &text.GoTextFace{Source: fontSource, Size: 18}
-	ui.normalFace = &text.GoTextFace{Source: fontSource, Size: 12}
-	ui.smallFace = &text.GoTextFace{Source: fontSource, Size: 10}
+	opts := func(size float64) *truetype.Options {
+		return &truetype.Options{Size: size, Hinting: font.HintingFull}
+	}
+	ui.titleFace = text.NewGoXFace(truetype.NewFace(fontData, opts(20)))
+	ui.normalFace = text.NewGoXFace(truetype.NewFace(fontData, opts(12)))
+	ui.smallFace = text.NewGoXFace(truetype.NewFace(fontData, opts(10)))
 }
 
 func (ui *ServerBrowserUI) buildUI() {

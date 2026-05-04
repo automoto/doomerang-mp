@@ -22,6 +22,9 @@ var (
 
 	//go:embed all:images
 	animationFS embed.FS
+
+	//go:embed fonts/excel.ttf
+	ExcelFontTTF []byte
 )
 
 type PlayerSpawn struct {

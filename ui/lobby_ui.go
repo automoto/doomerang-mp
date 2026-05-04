@@ -1,18 +1,19 @@
 package ui
 
 import (
-	"bytes"
 	"fmt"
 	"image/color"
 
+	"github.com/automoto/doomerang-mp/assets"
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
 	"github.com/automoto/doomerang-mp/systems"
 	"github.com/ebitenui/ebitenui"
 	"github.com/ebitenui/ebitenui/image"
 	"github.com/ebitenui/ebitenui/widget"
+	"github.com/golang/freetype/truetype"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
-	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font"
 )
 
 // LobbyUI holds the ebitenui interface for the lobby
@@ -61,26 +62,17 @@ func NewLobbyUI(lobby *components.LobbyData, onStartMatch, onGoBack func()) *Lob
 }
 
 func (lui *LobbyUI) loadFonts() {
-	// Load fonts using go fonts
-	fontSource, err := text.NewGoTextFaceSource(bytes.NewReader(goregular.TTF))
+	fontData, err := truetype.Parse(assets.ExcelFontTTF)
 	if err != nil {
 		panic(err)
 	}
 
-	// Store as text.Face interface for ebitenui compatibility
-	// Smaller fonts to fit 640x360 screen
-	lui.titleFace = &text.GoTextFace{
-		Source: fontSource,
-		Size:   18,
+	opts := func(size float64) *truetype.Options {
+		return &truetype.Options{Size: size, Hinting: font.HintingFull}
 	}
-	lui.normalFace = &text.GoTextFace{
-		Source: fontSource,
-		Size:   12,
-	}
-	lui.smallFace = &text.GoTextFace{
-		Source: fontSource,
-		Size:   10,
-	}
+	lui.titleFace = text.NewGoXFace(truetype.NewFace(fontData, opts(20)))
+	lui.normalFace = text.NewGoXFace(truetype.NewFace(fontData, opts(12)))
+	lui.smallFace = text.NewGoXFace(truetype.NewFace(fontData, opts(10)))
 }
 
 func (lui *LobbyUI) buildUI() {
