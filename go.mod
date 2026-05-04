@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.24.5
 
 require (
+	github.com/automoto/ggscale-go v0.0.0-00010101000000-000000000000
 	github.com/beefsack/go-astar v0.0.0-20200827232313-4ecf9e304482
 	github.com/coder/websocket v1.8.12
 	github.com/ebitenui/ebitenui v0.7.2
@@ -18,6 +19,11 @@ require (
 	github.com/yohamta/donburi v1.15.7
 	golang.org/x/image v0.31.0
 )
+
+// Local ggscale-go SDK checkout. Until the SDK is tagged and pushed to
+// github.com/automoto/ggscale-go, depend on the local clone. Adjust this
+// path if your ggscale-go checkout lives elsewhere.
+replace github.com/automoto/ggscale-go => ../../../ggscale-go
 
 require (
 	github.com/disintegration/imaging v1.6.2 // indirect

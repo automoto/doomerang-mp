@@ -7,7 +7,7 @@ import (
 
 type NetPlayerStateData struct {
 	StateID      netconfig.StateID
-	Direction    int    // -1 left, 1 right
+	Direction    int // -1 left, 1 right
 	Health       int
 	Lives        int
 	PlayerIndex  int

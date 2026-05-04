@@ -28,4 +28,3 @@ func (pb *PredictionBuffer) Store(input messages.PlayerInput, predX, predY float
 	}
 	pb.nextSeq = input.Sequence + 1
 }
-

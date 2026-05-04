@@ -988,11 +988,11 @@ func init() {
 
 	// Netcode Config (client-side prediction with position smoothing)
 	Netcode = NetcodeConfig{
-		SnapThreshold:     50.0,  // Only snap for large teleports/respawns
-		SmoothThreshold:   2.0,   // Ignore sub-2px errors
-		CorrectionRate:    0.1,   // 10% of error per snapshot
-		MaxCorrPerTick:    2.0,   // Max 2px correction per snapshot
-		VelocityBlendRate: 0.15,  // Gentle velocity blend
-		MaxExtrapFrames:   3.0,   // Remote player extrapolation limit
+		SnapThreshold:     50.0, // Only snap for large teleports/respawns
+		SmoothThreshold:   2.0,  // Ignore sub-2px errors
+		CorrectionRate:    0.1,  // 10% of error per snapshot
+		MaxCorrPerTick:    2.0,  // Max 2px correction per snapshot
+		VelocityBlendRate: 0.15, // Gentle velocity blend
+		MaxExtrapFrames:   3.0,  // Remote player extrapolation limit
 	}
 }

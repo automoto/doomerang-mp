@@ -19,7 +19,6 @@ const (
 	livesMargin  = 3
 )
 
-
 var heartIcon *ebiten.Image
 var hudDrawOp = &ebiten.DrawImageOptions{}
 

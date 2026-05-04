@@ -16,8 +16,8 @@ import (
 
 // NetLobbyUI holds the ebitenui interface for the network lobby
 type NetLobbyUI struct {
-	UI    *ebitenui.UI
-	
+	UI *ebitenui.UI
+
 	// State
 	Slots        [4]messages.LobbySlot
 	GameMode     string
@@ -32,19 +32,15 @@ type NetLobbyUI struct {
 	OnGoBack func()
 
 	// Widget references for updates
-	slotLabels      [4]*widget.Label
-	slotButtons     [4]*widget.Button // Clicking our own slot cycles ready
-	diffButtons     [4]*widget.Button // Bot difficulty buttons (host only)
-	teamButtons     [4]*widget.Button // Team selection buttons (host only)
-	gameModeLabel   *widget.Label
-	matchTimeLabel  *widget.Label
-	levelLabel      *widget.Label
-	gameModeButton  *widget.Button
-	matchTimeButton *widget.Button
-	levelButton     *widget.Button
-	addBotButton    *widget.Button
-	startButton     *widget.Button
-	statusLabel     *widget.Label
+	slotButtons    [4]*widget.Button // Clicking our own slot cycles ready
+	teamButtons    [4]*widget.Button // Team selection buttons (host only)
+	gameModeLabel  *widget.Label
+	levelLabel     *widget.Label
+	gameModeButton *widget.Button
+	levelButton    *widget.Button
+	addBotButton   *widget.Button
+	startButton    *widget.Button
+	statusLabel    *widget.Label
 
 	// Fonts
 	titleFace  text.Face
@@ -56,11 +52,11 @@ type NetLobbyUI struct {
 
 func NewNetLobbyUI(localNetID uint32, levelNames []string, onAction func(messages.LobbyAction), onGoBack func()) *NetLobbyUI {
 	lui := &NetLobbyUI{
-		LocalNetID: localNetID,
-		LevelNames: levelNames,
-		OnAction:   onAction,
-		OnGoBack:   onGoBack,
-		GameMode:   "ffa",
+		LocalNetID:   localNetID,
+		LevelNames:   levelNames,
+		OnAction:     onAction,
+		OnGoBack:     onGoBack,
+		GameMode:     "ffa",
 		MatchMinutes: 2,
 	}
 
@@ -152,7 +148,7 @@ func (lui *NetLobbyUI) buildUI() {
 		widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(100, 28)),
 		widget.ButtonOpts.Image(lui.buttonImage(color.RGBA{40, 100, 40, 255})),
 		widget.ButtonOpts.Text("START", &lui.normalFace, &widget.ButtonTextColor{
-			Idle: color.RGBA{255, 255, 255, 255},
+			Idle:     color.RGBA{255, 255, 255, 255},
 			Disabled: color.RGBA{100, 100, 100, 255},
 		}),
 		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
@@ -217,11 +213,9 @@ func (lui *NetLobbyUI) buildSlotRow(slotIndex int) *widget.Container {
 			Idle: color.RGBA{255, 255, 255, 255},
 		}),
 		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
-			// Only host can change teams for now to keep it simple
-			if lui.LocalNetID == lui.HostID {
-				// Cycle team for this slot
-				// lui.OnAction(...)
-			}
+			// Team-cycling click handler is a placeholder; LobbyAction
+			// for team change ships when host UI lands.
+			_ = lui
 		}),
 	)
 	row.AddChild(lui.teamButtons[slotIndex])
@@ -251,11 +245,12 @@ func (lui *NetLobbyUI) buildSettingsContainer() *widget.Container {
 		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
 			if lui.LocalNetID == lui.HostID {
 				newMode := "ffa"
-				if lui.GameMode == "ffa" {
+				switch lui.GameMode {
+				case "ffa":
 					newMode = "1v1"
-				} else if lui.GameMode == "1v1" {
+				case "1v1":
 					newMode = "2v2"
-				} else if lui.GameMode == "2v2" {
+				case "2v2":
 					newMode = "coop"
 				}
 				lui.OnAction(messages.LobbyAction{Action: "change_mode", String: newMode})
@@ -324,9 +319,10 @@ func (lui *NetLobbyUI) UpdateUI() {
 		}
 
 		text := fmt.Sprintf("P%d: ", i+1)
-		if slot.Type == 0 {
+		switch slot.Type {
+		case 0:
 			text += "Empty (Click to Join)"
-		} else if slot.Type == 1 {
+		case 1:
 			text += slot.Name
 			if slot.Ready {
 				text += " [READY]"
@@ -336,7 +332,7 @@ func (lui *NetLobbyUI) UpdateUI() {
 			if slot.PlayerID == lui.LocalNetID {
 				text += " (YOU)"
 			}
-		} else {
+		default:
 			text += "BOT"
 		}
 

@@ -375,11 +375,12 @@ func updateEnemyAnimation(enemy *components.EnemyData, physics *components.Physi
 	case cfg.StateApproachEdge:
 		targetState = cfg.Walk // Use walk animation when approaching edge
 	default:
-		if physics.OnGround == nil {
+		switch {
+		case physics.OnGround == nil:
 			targetState = cfg.Jump
-		} else if physics.SpeedX != 0 {
+		case physics.SpeedX != 0:
 			targetState = cfg.Running
-		} else {
+		default:
 			targetState = cfg.Idle
 		}
 	}

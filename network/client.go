@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/automoto/doomerang-mp/shared/messages"
+	ggscale "github.com/automoto/ggscale-go"
 	"github.com/coder/websocket"
 	"github.com/leap-fish/necs/esync"
 	"github.com/leap-fish/necs/router"
@@ -50,26 +51,34 @@ type Client struct {
 	deathCh       chan messages.DeathEvent
 	respawnCh     chan messages.RespawnEvent
 
-	matchCh chan messages.MatchEvent
-	scoreCh chan messages.ScoreEvent
+	matchCh       chan messages.MatchEvent
+	scoreCh       chan messages.ScoreEvent
 	lobbyUpdateCh chan messages.LobbyUpdate
+
+	// ggscale integration. nil when GGSCALE_API_KEY is unset, in which
+	// case Login is a no-op and SubmitMyScore returns nil silently.
+	ggscale              *ggscale.Client
+	ggscaleLeaderboardID int64
 }
 
 func NewClient() *Client {
+	gg, lb := SharedGgscale()
 	return &Client{
-		state:      StateDisconnected,
-		snapshotCh: make(chan esync.WorldSnapshot, 1),
-		chargeCh:   make(chan messages.BoomerangChargeEvent, 4),
-		throwCh:    make(chan messages.BoomerangThrowEvent, 4),
-		catchCh:    make(chan messages.BoomerangCatchEvent, 4),
-		hitCh:      make(chan messages.BoomerangHitEvent, 4),
-		meleeAttackCh: make(chan messages.MeleeAttackEvent, 4),
-		meleeHitCh:    make(chan messages.MeleeHitEvent, 4),
-		deathCh:       make(chan messages.DeathEvent, 4),
-		respawnCh:     make(chan messages.RespawnEvent, 4),
-		matchCh:       make(chan messages.MatchEvent, 4),
-		scoreCh:       make(chan messages.ScoreEvent, 4),
-		lobbyUpdateCh: make(chan messages.LobbyUpdate, 4),
+		state:                StateDisconnected,
+		snapshotCh:           make(chan esync.WorldSnapshot, 1),
+		chargeCh:             make(chan messages.BoomerangChargeEvent, 4),
+		throwCh:              make(chan messages.BoomerangThrowEvent, 4),
+		catchCh:              make(chan messages.BoomerangCatchEvent, 4),
+		hitCh:                make(chan messages.BoomerangHitEvent, 4),
+		meleeAttackCh:        make(chan messages.MeleeAttackEvent, 4),
+		meleeHitCh:           make(chan messages.MeleeHitEvent, 4),
+		deathCh:              make(chan messages.DeathEvent, 4),
+		respawnCh:            make(chan messages.RespawnEvent, 4),
+		matchCh:              make(chan messages.MatchEvent, 4),
+		scoreCh:              make(chan messages.ScoreEvent, 4),
+		lobbyUpdateCh:        make(chan messages.LobbyUpdate, 4),
+		ggscale:              gg,
+		ggscaleLeaderboardID: lb,
 	}
 }
 
@@ -375,6 +384,20 @@ func (c *Client) DrainScoreEvents() []messages.ScoreEvent {
 // DrainLobbyUpdates returns all pending lobby updates, non-blocking.
 func (c *Client) DrainLobbyUpdates() []messages.LobbyUpdate {
 	return drainChan(c.lobbyUpdateCh)
+}
+
+// SubmitMyScore posts the local player's score to the configured ggscale
+// leaderboard. No-op when ggscale was not configured (i.e. when
+// SetSharedGgscale was never called or was called with a nil client).
+func (c *Client) SubmitMyScore(ctx context.Context, score int64) error {
+	c.mu.RLock()
+	gg := c.ggscale
+	lb := c.ggscaleLeaderboardID
+	c.mu.RUnlock()
+	if gg == nil || lb == 0 {
+		return nil
+	}
+	return gg.Leaderboards.Submit(ctx, lb, score)
 }
 
 func drainChan[T any](ch chan T) []T {

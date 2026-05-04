@@ -1,0 +1,20 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  settings:
+    revive:
+      rules:
+        - name: var-naming
+        - name: error-return
+        - name: unused-parameter
+          disabled: true
+        # The "exported" rule wants a doc comment on every exported
+        # symbol. The doomerang-mp codebase predates that convention
+        # and the symbols are self-describing; relaxing this avoids 50+
+        # boilerplate comments without losing real signal.
+        - name: exported
+          disabled: true

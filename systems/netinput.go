@@ -129,11 +129,12 @@ func applyPrediction(world donburi.World, pred *NetPrediction, input messages.Pl
 		state.StateID = netconfig.StateChargingBoomerang
 		return
 	}
-	if !pred.OnGround {
+	switch {
+	case !pred.OnGround:
 		state.StateID = netconfig.Jump
-	} else if math.Abs(pred.VelX) >= 0.1 {
+	case math.Abs(pred.VelX) >= 0.1:
 		state.StateID = netconfig.Running
-	} else {
+	default:
 		state.StateID = netconfig.Idle
 	}
 }

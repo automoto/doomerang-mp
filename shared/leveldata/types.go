@@ -13,7 +13,7 @@ type CollisionData struct {
 // SolidRect represents a solid collision tile.
 type SolidRect struct {
 	X, Y, W, H float64
-	SlopeType   string // "", "45_up_right", "45_up_left"
+	SlopeType  string // "", "45_up_right", "45_up_left"
 }
 
 // SpawnPoint represents a player spawn location.

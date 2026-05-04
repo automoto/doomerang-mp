@@ -28,12 +28,12 @@ func init() {
 	Bot = BotConfigData{
 		Difficulties: map[BotDifficulty]BotDifficultyConfig{
 			BotDifficultyEasy: {
-				ReactionDelay:    30,  // 0.5 second reaction time
+				ReactionDelay:    30, // 0.5 second reaction time
 				AttackRange:      50.0,
 				RetreatThreshold: 0.2, // Retreat at 20% health
 			},
 			BotDifficultyNormal: {
-				ReactionDelay:    15,  // 0.25 second reaction time
+				ReactionDelay:    15, // 0.25 second reaction time
 				AttackRange:      60.0,
 				RetreatThreshold: 0.3, // Retreat at 30% health
 			},

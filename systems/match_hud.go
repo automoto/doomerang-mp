@@ -13,7 +13,6 @@ import (
 	"github.com/yohamta/donburi/ecs"
 )
 
-
 // DrawMatchHUD renders match-specific UI elements (timer, scores, countdown, results)
 func DrawMatchHUD(ecs *ecs.ECS, screen *ebiten.Image) {
 	matchEntry, ok := components.Match.First(ecs.World)

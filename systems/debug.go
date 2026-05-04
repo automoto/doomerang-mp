@@ -51,13 +51,14 @@ func DrawDebug(ecs *ecs.ECS, screen *ebiten.Image) {
 
 			// Determine color based on tags
 			c := color.RGBA{0, 255, 255, 255} // Cyan default
-			if obj.HasTags("solid") {
+			switch {
+			case obj.HasTags("solid"):
 				c = color.RGBA{100, 100, 100, 255} // Grey
-			} else if obj.HasTags("Player") {
+			case obj.HasTags("Player"):
 				c = color.RGBA{0, 0, 255, 255} // Blue
-			} else if obj.HasTags("Enemy") {
+			case obj.HasTags("Enemy"):
 				c = color.RGBA{255, 0, 0, 255} // Red
-			} else if obj.HasTags("Boomerang") {
+			case obj.HasTags("Boomerang"):
 				c = color.RGBA{0, 255, 0, 255} // Green
 			}
 
