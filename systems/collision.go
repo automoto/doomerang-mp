@@ -258,7 +258,6 @@ func snapToSlopeSurface(physics *components.PhysicsData, object *resolv.Object, 
 	physics.SpeedY = 0
 }
 
-
 func tryPlatformCollision(physics *components.PhysicsData, object *resolv.Object, check *resolv.Collision) (float64, bool) {
 	if physics.OnGround != nil {
 		return 0, false // Already grounded from ramp

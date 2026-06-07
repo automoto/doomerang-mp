@@ -122,6 +122,7 @@ func (m *ServerMatch) updateCountdown(dt float64) {
 
 func (m *ServerMatch) startMatch() {
 	m.State = netcomponents.MatchStatePlaying
+	m.server.matchInProgress.Store(true)
 	m.Timer = m.Duration
 
 	m.Scores = make(map[uint32]int)
@@ -227,6 +228,7 @@ func (m *ServerMatch) startNextRound() {
 
 func (m *ServerMatch) endMatch(reason string) {
 	m.State = netcomponents.MatchStateFinished
+	m.server.matchInProgress.Store(false)
 
 	// If winner not already set, determine it
 	if m.WinnerID == 0 {
@@ -239,6 +241,16 @@ func (m *ServerMatch) endMatch(reason string) {
 		Reason:   reason,
 		Scores:   m.Scores,
 	})
+
+	// Server-authoritative leaderboard submission: hand the final
+	// scores + per-player session tokens to the configured hook,
+	// which calls Leaderboards.SubmitFor. Runs in a goroutine because
+	// the hook makes network calls and must not block the game loop.
+	scoresCopy := make(map[uint32]int, len(m.Scores))
+	for k, v := range m.Scores {
+		scoresCopy[k] = v
+	}
+	go m.server.invokeMatchEndHook(scoresCopy)
 
 	m.Timer = 10.0
 }

@@ -46,7 +46,6 @@ type LobbyUI struct {
 	initialized bool
 }
 
-
 // NewLobbyUI creates a new lobby UI with ebitenui
 func NewLobbyUI(lobby *components.LobbyData, onStartMatch, onGoBack func()) *LobbyUI {
 	lui := &LobbyUI{

@@ -9,7 +9,10 @@ import (
 )
 
 // NewNetMatchEventSystem returns an ECS system that drains match events
-// from the network client and triggers UI effects or SFX.
+// from the network client and triggers UI effects or SFX. Leaderboard
+// score submission is server-authoritative — the dedicated game server
+// submits via Leaderboards.SubmitFor at match end using its secret-tier
+// API key, so this system has no leaderboard responsibilities.
 func NewNetMatchEventSystem(client *network.Client) func(*ecs.ECS) {
 	return func(e *ecs.ECS) {
 		for _, evt := range client.DrainMatchEvents() {

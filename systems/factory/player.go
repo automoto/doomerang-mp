@@ -33,9 +33,14 @@ func CreatePlayer(ecs *ecs.ECS, x, y float64, inputCfg PlayerInputConfig) *donbu
 		ComboCounter: 0,
 		InvulnFrames: 0,
 	})
+	var boundGamepad *int
+	if inputCfg.GamepadID != nil {
+		id := int(*inputCfg.GamepadID)
+		boundGamepad = &id
+	}
 	components.PlayerInput.SetValue(player, components.PlayerInputData{
 		PlayerIndex:    inputCfg.PlayerIndex,
-		BoundGamepadID: inputCfg.GamepadID,
+		BoundGamepadID: boundGamepad,
 		KeyboardZone:   inputCfg.KeyboardZone,
 		ControlScheme:  inputCfg.ControlScheme,
 		InputMethod:    getDefaultInputMethod(inputCfg),

@@ -73,7 +73,7 @@ func (ns *NetLobbyScene) configure() {
 	ns.ecsWorld = ecs.NewECS(donburi.NewWorld())
 	ns.ecsWorld.AddSystem(systems.UpdateAudio)
 
-	localNetID := uint32(ns.netClient.NetworkID())
+	localNetID := uint32(ns.netClient.NetworkID()) //nolint:gosec // NetworkId fits in uint32 for the foreseeable player counts
 	levelNames := ns.netClient.LevelNames()
 
 	ns.lobbyUI = ui.NewNetLobbyUI(

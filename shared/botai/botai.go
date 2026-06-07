@@ -449,7 +449,8 @@ func GenerateRetreatInputs(rng *rand.Rand, bot *components.BotData, input *compo
 	// Determine intended movement direction
 	var intendedMoveRight, intendedMoveLeft bool
 
-	if dist < 60 {
+	switch {
+	case dist < 60:
 		// Too close - back away with random dodges
 		if dx > 0 {
 			intendedMoveLeft = true
@@ -461,7 +462,7 @@ func GenerateRetreatInputs(rng *rand.Rand, bot *components.BotData, input *compo
 			input.CurrentInput[cfg.ActionJump] = true
 			bot.JumpCooldown = 40
 		}
-	} else if dist < 150 {
+	case dist < 150:
 		// Mid-range - strafe unpredictably while attacking
 		switch strafePhase {
 		case 0:
@@ -480,7 +481,7 @@ func GenerateRetreatInputs(rng *rand.Rand, bot *components.BotData, input *compo
 				}
 			}
 		}
-	} else {
+	default:
 		// Far away - chase the target
 		if dx > 10 {
 			intendedMoveRight = true
@@ -539,11 +540,12 @@ func GenerateRetreatInputs(rng *rand.Rand, bot *components.BotData, input *compo
 
 	// Aggressive counter-attacks
 	if bot.AttackCooldown <= 0 {
-		if dist > 80 && dist < 250 {
+		switch {
+		case dist > 80 && dist < 250:
 			// Boomerang at range
 			input.CurrentInput[cfg.ActionBoomerang] = true
 			bot.AttackCooldown = 60
-		} else if dist < 80 && dist > 50 {
+		case dist < 80 && dist > 50:
 			// Jump kick to close distance aggressively
 			if physics.OnGround && rng.Float32() < 0.4 {
 				input.CurrentInput[cfg.ActionJump] = true
@@ -554,7 +556,7 @@ func GenerateRetreatInputs(rng *rand.Rand, bot *components.BotData, input *compo
 				input.CurrentInput[cfg.ActionAttack] = true
 				bot.AttackCooldown = 25
 			}
-		} else if dist <= 50 {
+		case dist <= 50:
 			// Melee range - punch
 			input.CurrentInput[cfg.ActionAttack] = true
 			bot.AttackCooldown = 20

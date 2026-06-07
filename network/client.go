@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/automoto/doomerang-mp/shared/messages"
+	ggscale "github.com/automoto/ggscale-go"
 	"github.com/coder/websocket"
 	"github.com/leap-fish/necs/esync"
 	"github.com/leap-fish/necs/router"
@@ -50,26 +51,36 @@ type Client struct {
 	deathCh       chan messages.DeathEvent
 	respawnCh     chan messages.RespawnEvent
 
-	matchCh chan messages.MatchEvent
-	scoreCh chan messages.ScoreEvent
+	matchCh       chan messages.MatchEvent
+	scoreCh       chan messages.ScoreEvent
 	lobbyUpdateCh chan messages.LobbyUpdate
+
+	// ggscale integration. nil when GGSCALE_PUBLISHABLE_KEY is unset.
+	// The session token is forwarded to the dedicated game server via
+	// JoinRequest.GgscaleSessionToken so the server can submit scores
+	// on the player's behalf at match end.
+	ggscale              *ggscale.Client
+	ggscaleLeaderboardID int64
 }
 
 func NewClient() *Client {
+	gg, lb := SharedGgscale()
 	return &Client{
-		state:      StateDisconnected,
-		snapshotCh: make(chan esync.WorldSnapshot, 1),
-		chargeCh:   make(chan messages.BoomerangChargeEvent, 4),
-		throwCh:    make(chan messages.BoomerangThrowEvent, 4),
-		catchCh:    make(chan messages.BoomerangCatchEvent, 4),
-		hitCh:      make(chan messages.BoomerangHitEvent, 4),
-		meleeAttackCh: make(chan messages.MeleeAttackEvent, 4),
-		meleeHitCh:    make(chan messages.MeleeHitEvent, 4),
-		deathCh:       make(chan messages.DeathEvent, 4),
-		respawnCh:     make(chan messages.RespawnEvent, 4),
-		matchCh:       make(chan messages.MatchEvent, 4),
-		scoreCh:       make(chan messages.ScoreEvent, 4),
-		lobbyUpdateCh: make(chan messages.LobbyUpdate, 4),
+		state:                StateDisconnected,
+		snapshotCh:           make(chan esync.WorldSnapshot, 1),
+		chargeCh:             make(chan messages.BoomerangChargeEvent, 4),
+		throwCh:              make(chan messages.BoomerangThrowEvent, 4),
+		catchCh:              make(chan messages.BoomerangCatchEvent, 4),
+		hitCh:                make(chan messages.BoomerangHitEvent, 4),
+		meleeAttackCh:        make(chan messages.MeleeAttackEvent, 4),
+		meleeHitCh:           make(chan messages.MeleeHitEvent, 4),
+		deathCh:              make(chan messages.DeathEvent, 4),
+		respawnCh:            make(chan messages.RespawnEvent, 4),
+		matchCh:              make(chan messages.MatchEvent, 4),
+		scoreCh:              make(chan messages.ScoreEvent, 4),
+		lobbyUpdateCh:        make(chan messages.LobbyUpdate, 4),
+		ggscale:              gg,
+		ggscaleLeaderboardID: lb,
 	}
 }
 
@@ -86,10 +97,17 @@ func (c *Client) Connect(address, version, playerName, level string) {
 		c.state = StateConnected
 		c.mu.Unlock()
 
+		var ggscaleToken string
+		if gg, _ := SharedGgscale(); gg != nil {
+			if sess := gg.Session(); sess != nil {
+				ggscaleToken = sess.AccessToken
+			}
+		}
 		payload, err := router.Serialize(messages.JoinRequest{
-			Version:    version,
-			PlayerName: playerName,
-			Level:      level,
+			Version:             version,
+			PlayerName:          playerName,
+			Level:               level,
+			GgscaleSessionToken: ggscaleToken,
 		})
 		if err != nil {
 			c.setError(fmt.Errorf("failed to serialize join request: %w", err))
@@ -375,6 +393,16 @@ func (c *Client) DrainScoreEvents() []messages.ScoreEvent {
 // DrainLobbyUpdates returns all pending lobby updates, non-blocking.
 func (c *Client) DrainLobbyUpdates() []messages.LobbyUpdate {
 	return drainChan(c.lobbyUpdateCh)
+}
+
+// SubmitMyScore is a no-op retained for compatibility. Score submission
+// moved to the dedicated game server, which submits via SubmitFor with
+// its secret-tier API key — publishable keys are blocked from
+// leaderboard writes server-side. The client's session token rides in
+// JoinRequest.GgscaleSessionToken so the server can submit on the
+// player's behalf.
+func (c *Client) SubmitMyScore(_ context.Context, _ int64) error {
+	return nil
 }
 
 func drainChan[T any](ch chan T) []T {

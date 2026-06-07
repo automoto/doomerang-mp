@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/automoto/doomerang-mp/components"
 	cfg "github.com/automoto/doomerang-mp/config"
@@ -16,6 +18,11 @@ import (
 	"github.com/leap-fish/necs/router"
 	"github.com/leap-fish/necs/transports"
 	"github.com/yohamta/donburi"
+)
+
+const (
+	defaultDrainTimeout = 30 * time.Second
+	drainPollInterval   = 25 * time.Millisecond
 )
 
 // serverCmd is queued from router goroutines and executed on the game loop goroutine.
@@ -42,11 +49,33 @@ type Server struct {
 	pendingClients   map[*router.NetworkClient]bool
 	clientNetworkIDs map[*router.NetworkClient]uint32
 	networkIDClients map[uint32]*router.NetworkClient
-	match            *ServerMatch
-	mu               sync.RWMutex
+	// ggscaleTokens is keyed by netID and holds each player's ggscale
+	// session JWT, captured from JoinRequest. Used at match end to
+	// submit scores via Leaderboards.SubmitFor.
+	ggscaleTokens map[uint32]string
+	matchEndHook  MatchEndHook
+	match         *ServerMatch
+	mu            sync.RWMutex
 
 	cmdCh chan serverCmd
+
+	// matchInProgress is true between ServerMatch.startMatch and endMatch.
+	// Drain polls it to wait out an in-flight match before stopping the loop.
+	matchInProgress atomic.Bool
+
+	// draining is set once Drain() begins; onJoinRequest checks it to
+	// reject new players with "server draining".
+	draining     atomic.Bool
+	drainOnce    sync.Once
+	drainDone    chan struct{}
+	drainTimeout time.Duration // 0 means defaultDrainTimeout
 }
+
+// MatchEndHook is invoked once per match end with the final scores and
+// the per-player ggscale session tokens captured at join time. The
+// dedicated game-server binary supplies a hook that calls
+// Leaderboards.SubmitFor; tests/dev binaries leave it nil.
+type MatchEndHook func(scores map[uint32]int, ggscaleTokens map[uint32]string)
 
 func NewServer(tickRate int, name, version string, levels map[string]*ServerLevel, levelNames []string) *Server {
 	if len(levelNames) == 0 {
@@ -55,13 +84,13 @@ func NewServer(tickRate int, name, version string, levels map[string]*ServerLeve
 	world := donburi.NewWorld()
 
 	s := &Server{
-		world:          world,
-		name:           name,
-		version:        version,
-		levels:         levels,
-		levelNames:     levelNames,
-		activeLevel:    levels[levelNames[0]],
-		activeName:     levelNames[0],
+		world:            world,
+		name:             name,
+		version:          version,
+		levels:           levels,
+		levelNames:       levelNames,
+		activeLevel:      levels[levelNames[0]],
+		activeName:       levelNames[0],
 		playerPhysics:    make(map[donburi.Entity]*PlayerPhysics),
 		boomerangPhysics: make(map[donburi.Entity]*BoomerangPhysics),
 		playerBoomerangs: make(map[donburi.Entity]donburi.Entity),
@@ -69,7 +98,9 @@ func NewServer(tickRate int, name, version string, levels map[string]*ServerLeve
 		pendingClients:   make(map[*router.NetworkClient]bool),
 		clientNetworkIDs: make(map[*router.NetworkClient]uint32),
 		networkIDClients: make(map[uint32]*router.NetworkClient),
+		ggscaleTokens:    make(map[uint32]string),
 		cmdCh:            make(chan serverCmd, 64),
+		drainDone:        make(chan struct{}),
 	}
 	s.loop = NewGameLoop(s, tickRate)
 
@@ -94,6 +125,49 @@ func (s *Server) Start(port uint) error {
 
 func (s *Server) Stop() {
 	s.loop.Stop()
+}
+
+// Drain stops accepting new player joins, waits for any in-progress
+// match to end (bounded by drainTimeout, default 30 s), then stops the
+// game loop. Safe to call concurrently and multiple times — the first
+// caller performs the drain; subsequent callers block until it finishes.
+//
+// Wired into both the Agones Shutdown watcher and the SIGTERM handler so
+// the same shutdown path runs whether Agones triggers it or a local
+// signal does.
+func (s *Server) Drain() {
+	s.draining.Store(true)
+	s.drainOnce.Do(func() {
+		defer close(s.drainDone)
+		s.waitForMatchEnd()
+		s.Stop()
+	})
+	<-s.drainDone
+}
+
+func (s *Server) waitForMatchEnd() {
+	if !s.matchInProgress.Load() {
+		return
+	}
+	timeout := s.drainTimeout
+	if timeout == 0 {
+		timeout = defaultDrainTimeout
+	}
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+	poll := time.NewTicker(drainPollInterval)
+	defer poll.Stop()
+	for {
+		select {
+		case <-deadline.C:
+			log.Printf("[drain] timeout (%v) elapsed while waiting for match end; stopping anyway", timeout)
+			return
+		case <-poll.C:
+			if !s.matchInProgress.Load() {
+				return
+			}
+		}
+	}
 }
 
 func (s *Server) ProcessCommands() {
@@ -123,6 +197,41 @@ func (s *Server) ActiveLevel() *ServerLevel {
 
 func (s *Server) Match() *ServerMatch {
 	return s.match
+}
+
+// SetMatchEndHook installs f as the callback that ServerMatch invokes
+// at match end. Wire to a function that submits leaderboard scores via
+// ggscale.Leaderboards.SubmitFor. Pass nil to clear.
+func (s *Server) SetMatchEndHook(f MatchEndHook) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.matchEndHook = f
+}
+
+// snapshotGgscaleTokens returns a copy of the netID→session-token map.
+// Called from match-end paths so the hook can run without holding the
+// server lock.
+func (s *Server) snapshotGgscaleTokens() map[uint32]string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[uint32]string, len(s.ggscaleTokens))
+	for k, v := range s.ggscaleTokens {
+		out[k] = v
+	}
+	return out
+}
+
+// invokeMatchEndHook is called by ServerMatch.endMatch with the final
+// score map. Looks up the installed hook under the lock then runs it
+// outside — the hook makes network calls.
+func (s *Server) invokeMatchEndHook(scores map[uint32]int) {
+	s.mu.RLock()
+	hook := s.matchEndHook
+	s.mu.RUnlock()
+	if hook == nil {
+		return
+	}
+	hook(scores, s.snapshotGgscaleTokens())
 }
 
 func (s *Server) GetPlayerPhysics(entity donburi.Entity) *PlayerPhysics {
@@ -176,6 +285,12 @@ func (s *Server) onJoinRequest(client *router.NetworkClient, req messages.JoinRe
 
 	if !isPending {
 		log.Printf("Join request from non-pending client %s, ignoring", client.Id())
+		return
+	}
+
+	if s.draining.Load() {
+		log.Printf("Client %s rejected: server draining", client.Id())
+		_ = client.SendMessage(messages.JoinRejected{Reason: "server draining"})
 		return
 	}
 
@@ -252,6 +367,9 @@ func (s *Server) spawnPlayer(client *router.NetworkClient, req messages.JoinRequ
 	s.clientEntities[client] = entity
 	s.clientNetworkIDs[client] = uint32(*networkID)
 	s.networkIDClients[uint32(*networkID)] = client
+	if req.GgscaleSessionToken != "" {
+		s.ggscaleTokens[uint32(*networkID)] = req.GgscaleSessionToken
+	}
 	s.mu.Unlock()
 
 	_ = client.SendMessage(messages.JoinAccepted{
@@ -564,4 +682,3 @@ func (s *Server) botCount() int {
 	})
 	return count
 }
-

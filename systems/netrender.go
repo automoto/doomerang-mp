@@ -263,7 +263,7 @@ func DrawNetworkedPlayers(e *ecs.ECS, screen *ebiten.Image) {
 
 			// Network ID label
 			if nid := esync.GetNetworkId(entry); nid != nil {
-				label := "ID:" + strconv.Itoa(int(*nid))
+				label := "ID:" + strconv.Itoa(int(*nid)) //nolint:gosec // NetworkId fits in int for the foreseeable player counts
 				sx := (pos.X+collisionW/2-camera.Position.X)*zoom + screenW/2
 				sy := (pos.Y-camera.Position.Y)*zoom + screenH/2
 				labelX := int(sx) - len(label)*3
@@ -366,7 +366,7 @@ func DrawNetworkHUD(e *ecs.ECS, screen *ebiten.Image) {
 		esync.NetworkEntityQuery.Each(e.World, func(entry *donburi.Entry) {
 			entityCount++
 			if nid := esync.GetNetworkId(entry); nid != nil {
-				ids = append(ids, int(*nid))
+				ids = append(ids, int(*nid)) //nolint:gosec // NetworkId fits in int for the foreseeable player counts
 			}
 		})
 		info := fmt.Sprintf("Online - Entities: %d  IDs: %v", entityCount, ids)
@@ -450,7 +450,9 @@ func drawAllPlayersCornerHUD(e *ecs.ECS, screen *ebiten.Image, gs *netcomponents
 
 		// Current HP (player color)
 		hpRatio := float32(state.Health) / float32(cfg.Player.Health)
-		if hpRatio < 0 { hpRatio = 0 }
+		if hpRatio < 0 {
+			hpRatio = 0
+		}
 		vector.FillRect(screen, x, y, netHudBarWidth*hpRatio, netHudBarHeight, playerColor, false)
 
 		// Draw lives counter
@@ -465,7 +467,9 @@ func drawNetworkPlayerLives(lives int, screen *ebiten.Image, startX, startY floa
 	if netHeartIcon == nil {
 		netHeartIcon = assets.GetIconImage("icon_heart.png")
 	}
-	if netHeartIcon == nil { return }
+	if netHeartIcon == nil {
+		return
+	}
 
 	heartWidth := netHeartIcon.Bounds().Dx()
 	rightSide := playerIndex == 1 || playerIndex == 3

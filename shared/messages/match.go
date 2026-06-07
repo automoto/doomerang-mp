@@ -56,12 +56,12 @@ type LobbyUpdate struct {
 }
 
 type LobbySlot struct {
-	Type      int    // 0=Empty, 1=Human, 2=Bot
-	PlayerID  uint32 // NetworkID of human player, 0 if empty/bot
-	Ready     bool
-	Team      int
+	Type       int    // 0=Empty, 1=Human, 2=Bot
+	PlayerID   uint32 // NetworkID of human player, 0 if empty/bot
+	Ready      bool
+	Team       int
 	Difficulty int
-	Name      string
+	Name       string
 }
 
 // SyncGameState is sent periodically or on change to ensure clients have latest info

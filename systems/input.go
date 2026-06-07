@@ -197,7 +197,7 @@ func updatePlayerInputData(input *components.PlayerInputData, gamepads []ebiten.
 	input.CurrentInput = [cfg.ActionCount]bool{}
 
 	if input.BoundGamepadID != nil {
-		pollGamepadForPlayer(input, *input.BoundGamepadID)
+		pollGamepadForPlayer(input, ebiten.GamepadID(*input.BoundGamepadID))
 		return
 	}
 

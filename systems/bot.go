@@ -12,7 +12,7 @@ import (
 	"github.com/yohamta/donburi/ecs"
 )
 
-var rng = rand.New(rand.NewSource(42)) // Fixed seed for deterministic replay
+var rng = rand.New(rand.NewSource(42)) //nolint:gosec // deterministic replay seed; not cryptographic
 
 // Nav grid cache (created once per level)
 var cachedNavGrid *pathfinding.NavGrid

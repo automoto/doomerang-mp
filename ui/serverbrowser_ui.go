@@ -35,7 +35,7 @@ type ServerBrowserUI struct {
 	statusLabel *widget.Label
 	connectBtn  *widget.Button
 
-	levelNames      []string
+	levelNames       []string
 	selectedLevelIdx int
 	levelLabel       *widget.Label
 

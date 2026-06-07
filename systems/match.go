@@ -76,11 +76,12 @@ func determineWinner(match *components.MatchData) {
 		team0Score := match.GetTeamScore(0)
 		team1Score := match.GetTeamScore(1)
 
-		if team0Score > team1Score {
+		switch {
+		case team0Score > team1Score:
 			match.WinningTeam = 0
-		} else if team1Score > team0Score {
+		case team1Score > team0Score:
 			match.WinningTeam = 1
-		} else {
+		default:
 			match.WinningTeam = -1 // Tie
 		}
 		match.WinnerIndex = -1 // Not applicable for team mode

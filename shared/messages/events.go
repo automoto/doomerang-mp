@@ -49,13 +49,13 @@ type BoomerangCatchEvent struct {
 
 // BoomerangHitEvent is sent when a boomerang hits a player
 type BoomerangHitEvent struct {
-	AttackerNetworkID   uint
-	TargetNetworkID     uint
-	HitX, HitY         float64
-	ChargeRatio         float64
-	Damage              int
-	KnockbackX          float64
-	KnockbackY          float64
+	AttackerNetworkID uint
+	TargetNetworkID   uint
+	HitX, HitY        float64
+	ChargeRatio       float64
+	Damage            int
+	KnockbackX        float64
+	KnockbackY        float64
 }
 
 // MeleeAttackEvent is broadcast when a player initiates a melee attack (for SFX).
@@ -68,7 +68,7 @@ type MeleeAttackEvent struct {
 type MeleeHitEvent struct {
 	AttackerNetworkID uint
 	TargetNetworkID   uint
-	HitX, HitY       float64
+	HitX, HitY        float64
 	Damage            int
 	KnockbackX        float64
 	KnockbackY        float64

@@ -178,7 +178,7 @@ func (ps *PlatformerScene) configure() {
 	}
 
 	// Spawn players at available spawn points
-	if len(levelData.CurrentLevel.PlayerSpawns) <= 0 {
+	if len(levelData.CurrentLevel.PlayerSpawns) == 0 {
 		err := errors.New("no player spawn points defined in Map")
 		panic(err)
 	}

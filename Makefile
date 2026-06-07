@@ -22,12 +22,12 @@ run: vendor
 build:
 	go build .
 
-# Server targets
+# Server targets (headless: -tags nogui excludes ebiten/rendering code)
 server:
-	go build -o $(DIST_DIR)/server/doomerang-server ./server/cmd/server
+	CGO_ENABLED=0 go build -tags nogui -o $(DIST_DIR)/server/doomerang-server ./server/cmd/server
 
 run-server:
-	go run ./server/cmd/server
+	go run -tags nogui ./server/cmd/server
 
 basic-test:
 	./scripts/basic-test.sh
