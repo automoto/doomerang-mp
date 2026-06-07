@@ -35,6 +35,13 @@ func main() {
 	numBots := flag.Int("bots", 0, "Number of bots to spawn on startup")
 	flag.Parse()
 
+	// Arm the signal handler before any blocking init (ggscale Register,
+	// Agones Ready/Watch) so a SIGTERM landing during startup gets caught
+	// by the same cleanup path as one delivered mid-run. Buffered=1 so a
+	// signal arriving before the goroutine starts isn't lost.
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
 	if err := protocol.RegisterComponents(); err != nil {
 		log.Fatalf("Failed to register components: %v", err)
 	}
@@ -53,28 +60,64 @@ func main() {
 
 	stopHeartbeat, deregister := startGgscaleRegistration(server, *name, *address, *version, *region, *maxPlayers)
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// Agones lifecycle. The drain callback forwards into sigChan so the
+	// Agones-Shutdown path and the SIGTERM path run the SAME cleanup
+	// goroutine — there is only one shutdown sequence, no duplicate
+	// cleanup, no path that forgets to deregister.
+	agones, err := newAgonesLifecycle(func() {
+		log.Println("[agones] Shutdown state received; signalling shutdown")
+		select {
+		case sigChan <- syscall.SIGTERM:
+		default: // shutdown already underway
+		}
+	})
+
+	var shutdownOnce sync.Once
+	shutdown := func() {
+		shutdownOnce.Do(func() {
+			log.Println("Shutting down server...")
+			if stopHeartbeat != nil {
+				stopHeartbeat()
+			}
+			if deregister != nil {
+				deregister()
+			}
+			// Drain sets the draining flag immediately (rejects new
+			// joins), waits for any in-flight match to end (bounded by
+			// drainTimeout), then stops the game loop.
+			server.Drain()
+			if agones != nil {
+				agones.Stop()
+			}
+		})
+	}
+
 	go func() {
 		<-sigChan
-		log.Println("Shutting down server...")
-		if stopHeartbeat != nil {
-			stopHeartbeat()
-		}
-		if deregister != nil {
-			deregister()
-		}
-		// Drain waits for any in-flight match to end (bounded), then
-		// stops the loop — same exit path the Agones Shutdown watcher
-		// will use, so signals and Agones converge on one shutdown sequence.
-		server.Drain()
+		shutdown()
 		os.Exit(0)
 	}()
+
+	if err != nil {
+		log.Printf("[agones] init: %v", err)
+		shutdown()
+		os.Exit(1)
+	}
+	if agones != nil {
+		if err := agones.Start(context.Background()); err != nil {
+			log.Printf("[agones] start: %v", err)
+			shutdown()
+			os.Exit(1)
+		}
+		log.Println("[agones] lifecycle started (watch + Ready sent, health active)")
+	}
 
 	log.Printf("Starting Doomerang server %q on port %d (tick rate: %d/s, version: %s)",
 		*name, *port, *tickRate, *version)
 	if err := server.Start(*port); err != nil {
-		log.Fatalf("Server error: %v", err)
+		log.Printf("server start: %v", err)
+		shutdown()
+		os.Exit(1)
 	}
 }
 
