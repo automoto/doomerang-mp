@@ -14,10 +14,10 @@ import (
 
 // Melee hitbox active window (in ticks at server tick rate).
 const (
-	meleeHitboxStart     = 3
-	meleeHitboxEnd       = 8
-	jumpKickHitboxStart  = 2
-	jumpKickHitboxEnd    = 12 // Jump kick has a longer active window (2x)
+	meleeHitboxStart    = 3
+	meleeHitboxEnd      = 8
+	jumpKickHitboxStart = 2
+	jumpKickHitboxEnd   = 12 // Jump kick has a longer active window (2x)
 )
 
 // updateCombat is called once per server tick, after physics.
