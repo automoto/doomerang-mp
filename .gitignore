@@ -31,6 +31,13 @@ test/*
 .DS_Store
 Thumbs.db
 
+# Local environment / secrets — never commit.
+.env
+.env.local
+.env.*.local
+# Compose file-mounted secrets. Seed with `make secrets-init`; never commit.
+secrets/
+
 # Agent, Roo rules and Cursor files
 .roo/
 .cursor/

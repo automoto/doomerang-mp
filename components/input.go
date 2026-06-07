@@ -2,7 +2,6 @@ package components
 
 import (
 	cfg "github.com/automoto/doomerang-mp/config"
-	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/yohamta/donburi"
 )
 
@@ -46,7 +45,7 @@ type PlayerInputData struct {
 	PlayerIndex    int                   // 0-3 player index
 	CurrentInput   [cfg.ActionCount]bool // Current frame's Pressed state
 	PreviousInput  [cfg.ActionCount]bool // Previous frame's Pressed state
-	BoundGamepadID *ebiten.GamepadID     // Bound gamepad (nil = keyboard)
+	BoundGamepadID *int                  // Bound gamepad ID (nil = keyboard); int matches ebiten.GamepadID
 	KeyboardZone   int                   // DEPRECATED: use ControlScheme instead
 	ControlScheme  cfg.ControlSchemeID   // Active control scheme (A=Arrows+Numpad, B=WASD+Space)
 	InputMethod    InputMethod           // Current input method (for UI prompts)

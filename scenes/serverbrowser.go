@@ -1,11 +1,9 @@
 package scenes
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
 	"image/color"
 	"log"
-	"net/http"
 	"sync"
 	"time"
 
@@ -31,13 +29,11 @@ type ServerBrowserScene struct {
 	fetchedServers []ui.ServerEntry
 	fetchErr       error
 	fetchDone      bool
-	httpClient     *http.Client
 }
 
 func NewServerBrowserScene(sc SceneChanger) *ServerBrowserScene {
 	return &ServerBrowserScene{
 		sceneChanger: sc,
-		httpClient:   &http.Client{Timeout: 5 * time.Second},
 	}
 }
 
@@ -158,45 +154,33 @@ func (s *ServerBrowserScene) fetchServers() {
 	s.browserUI.SetBrowseStatus("Fetching servers...")
 	s.browserUI.SetRefreshing(true)
 
-	go s.queryMasterServer()
+	go s.queryGgscaleFleet()
 }
 
-func (s *ServerBrowserScene) queryMasterServer() {
-	resp, err := s.httpClient.Get(cfg.Network.MasterServerURL + "/servers")
+func (s *ServerBrowserScene) queryGgscaleFleet() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	address, err := network.FindMatch(ctx, "docker-default", "deathmatch")
 	if err != nil {
-		log.Printf("[browser] master server query failed: %v", err)
-		s.mu.Lock()
-		s.fetchErr = err
-		s.fetchDone = true
-		s.mu.Unlock()
-		return
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		err := fmt.Errorf("master server returned status %d", resp.StatusCode)
-		log.Printf("[browser] %v", err)
-		s.mu.Lock()
-		s.fetchErr = err
-		s.fetchDone = true
-		s.mu.Unlock()
+		log.Printf("[browser] matchmaking failed: %v", err)
+		s.recordFetchResult(nil, err)
 		return
 	}
 
-	var servers []ui.ServerEntry
-	if err := json.NewDecoder(resp.Body).Decode(&servers); err != nil {
-		log.Printf("[browser] failed to decode server list: %v", err)
-		s.mu.Lock()
-		s.fetchErr = err
-		s.fetchDone = true
-		s.mu.Unlock()
-		return
-	}
-
+	out := []ui.ServerEntry{{
+		Name:       "Matchmade Server",
+		Address:    address,
+		Version:    cfg.Network.GameVersion,
+		MaxPlayers: 4,
+	}}
+	s.recordFetchResult(out, nil)
+}
+func (s *ServerBrowserScene) recordFetchResult(servers []ui.ServerEntry, err error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.fetchedServers = servers
+	s.fetchErr = err
 	s.fetchDone = true
-	s.mu.Unlock()
 }
 
 // discoverLevelNames returns sorted stem names of all .tmx levels in embedded assets.

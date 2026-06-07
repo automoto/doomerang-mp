@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="80" height="350" tilewidth="16" tileheight="16" infinite="0" nextlayerid="3" nextobjectid="1">
- <tileset firstgid="1" source="../../../doomerang/assets/levels/tilesets/cyberpunk-tiles.tsx"/>
+ <tileset firstgid="1" source="tilesets/cyberpunk-tiles.tsx"/>
  <imagelayer id="2" name="bg" opacity="0.5">
-  <image source="../../../doomerang/assets/levels/background/level2.png" width="1280" height="5600"/>
+  <image source="background/Background-Night-Complete-2-Blurred-.png" width="1280" height="5600"/>
  </imagelayer>
  <layer id="1" name="wg-tiles" width="80" height="350">
   <data encoding="csv">

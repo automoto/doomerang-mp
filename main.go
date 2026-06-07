@@ -110,21 +110,26 @@ func main() {
 	}
 }
 
-// initGgscale reads GGSCALE_* env vars; on a non-empty GGSCALE_API_KEY
-// it builds an SDK client, logs in via email/password, and registers
-// the result with the network package for later use by SubmitMyScore.
+// initGgscale reads GGSCALE_* env vars; on a non-empty
+// GGSCALE_PUBLISHABLE_KEY it builds an SDK client, registers
+// anonymously (resuming the persisted identity if one is on disk), and
+// stashes the result for the network client to attach to JoinRequest.
 //
-// Required env vars when GGSCALE_API_KEY is set:
-//   - GGSCALE_EMAIL, GGSCALE_PASSWORD: credentials of an existing,
-//     verified end-user on the configured tenant.
+// Required env vars when GGSCALE_PUBLISHABLE_KEY is set:
 //   - GGSCALE_LEADERBOARD_ID: int64 ID of the leaderboard scores
 //     should be posted to. (Create one with `INSERT INTO leaderboards
 //     ...` until the dashboard grows a UI for it.)
 //
 // Optional:
 //   - GGSCALE_BASE_URL: defaults to http://localhost:8080.
+//
+// Why publishable, not secret: this credential ships embedded in the
+// game binary. Publishable keys can register an anonymous session and
+// read leaderboards; the score-submission write is gated to secret-tier
+// keys server-side and runs from the dedicated game server, which has
+// its own GGSCALE_SECRET_KEY.
 func initGgscale() error {
-	apiKey := os.Getenv("GGSCALE_API_KEY")
+	apiKey := os.Getenv("GGSCALE_PUBLISHABLE_KEY")
 	if apiKey == "" {
 		return nil
 	}
@@ -133,33 +138,36 @@ func initGgscale() error {
 	if baseURL == "" {
 		baseURL = "http://localhost:8080"
 	}
-	email := os.Getenv("GGSCALE_EMAIL")
-	password := os.Getenv("GGSCALE_PASSWORD")
-	if email == "" || password == "" {
-		return fmt.Errorf("GGSCALE_EMAIL and GGSCALE_PASSWORD are required when GGSCALE_API_KEY is set")
-	}
 	lbStr := os.Getenv("GGSCALE_LEADERBOARD_ID")
 	if lbStr == "" {
-		return fmt.Errorf("GGSCALE_LEADERBOARD_ID is required when GGSCALE_API_KEY is set")
+		return fmt.Errorf("GGSCALE_LEADERBOARD_ID is required when GGSCALE_PUBLISHABLE_KEY is set")
 	}
 	lbID, err := strconv.ParseInt(lbStr, 10, 64)
 	if err != nil {
 		return fmt.Errorf("GGSCALE_LEADERBOARD_ID must be an integer: %w", err)
 	}
 
-	gg, err := ggscale.NewClient(ggscale.Options{BaseURL: baseURL, APIKey: apiKey})
+	storePath := ggscale.DefaultSessionPath("doomerang-mp")
+	transport := &ggscale.StdNetTransport{BaseURL: baseURL}
+	auth := ggscale.NewAnonymousAuth(transport, apiKey, storePath)
+
+	gg, err := ggscale.NewClient(ggscale.Options{
+		Transport:       transport,
+		APIKey:          apiKey,
+		OnSessionUpdate: auth.SaveSession,
+	})
 	if err != nil {
 		return fmt.Errorf("ggscale.NewClient: %w", err)
 	}
 
-	auth := ggscale.NewEmailPasswordAuth(gg.Transport(), apiKey, email, password)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := gg.Login(ctx, auth); err != nil {
-		return fmt.Errorf("ggscale login: %w", err)
+		return fmt.Errorf("ggscale anonymous login: %w", err)
 	}
 
 	network.SetSharedGgscale(gg, lbID)
-	log.Printf("[ggscale] authenticated as end_user_id=%d, leaderboard=%d", gg.Session().EndUserID, lbID)
+	log.Printf("[ggscale] authenticated anonymously as end_user_id=%d, leaderboard=%d, session=%s",
+		gg.Session().EndUserID, lbID, storePath)
 	return nil
 }

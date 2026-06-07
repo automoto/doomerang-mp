@@ -1,57 +1,152 @@
+# doomerang-mp local stack: postgres + ggscale-server + a single
+# doomerang game-server, networked together. The native game client
+# runs on the host and connects to ggscale on :8080 (auth + leaderboard
+# + fleet browse) and to doomerang-server directly on :7373.
+#
+# Secrets are file-mounted from `./secrets/` (gitignored) into each
+# container at `/run/secrets/<name>`. Services read them via the
+# `<NAME>_FILE` env-var convention (postgres-native, plus DATABASE_URL_FILE
+# in ggscale and GGSCALE_SECRET_KEY_FILE in doomerang-server). No secret
+# value appears in the compose file or in container env.
+#
+# Usage (one-time):
+#   cp -r secrets.example secrets   # then edit ./secrets/* with real values
+#   docker compose up -d --wait
+#
+# Edit any file under `./secrets/` to rotate; redeploy the affected
+# service. For prod-shaped deploys, replace ./secrets/* with values
+# rendered from Vault / k8s ConfigMaps / SOPS / etc. — the file path
+# contract is what services depend on, not how the file got there.
+#
+# Mints + first-run bootstrap: hit http://localhost:3001/v1/dashboard/setup
+# (the bootstrap token is written to ../../data/bootstrap.token).
+# Mint a project-pinned secret-tier API key (key_type='secret'), write
+# it to ./secrets/ggscale_secret_key, and run
+# `docker compose up -d doomerang-server`. The game client uses a
+# separate publishable key (set via GGSCALE_PUBLISHABLE_KEY); the
+# secret key here authorises fleet writes + leaderboard submissions.
+#
+# This file mounts ggscale's db/migrations and compose/init-sql from a
+# sibling ggscale checkout (`../../` from this file). Cloning doomerang-mp
+# without ggscale beside it will not work yet — see docs/integrations/
+# doomerang.md "follow-ups".
+name: doomerang
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  database_url:
+    file: ./secrets/database_url
+  ggscale_secret_key:
+    file: ./secrets/ggscale_secret_key
+
 services:
-  # --- Master server for server discovery ---
-  master:
-    build:
-      context: master
-      dockerfile: Dockerfile
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ggscale}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB: ${POSTGRES_DB:-ggscale}
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../../compose/init-sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ggscale} -d ${POSTGRES_DB:-ggscale}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    logging: *default-logging
+
+  migrate:
+    image: migrate/migrate:v4.19.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../../db/migrations:/migrations:ro
+    secrets:
+      - database_url
+    # migrate has no native _FILE support; alpine base provides sh+cat
+    # so we read the secret at startup and pass it as the -database arg.
+    entrypoint:
+      - sh
+      - -c
+      - 'migrate -path /migrations -database "$$(cat /run/secrets/database_url)" up'
+    restart: "no"
+    logging: *default-logging
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "8025:8025"
+    logging: *default-logging
+
+  ggscale-server:
+    image: ${GGSCALE_IMAGE:-buildwrangler/ggscale:latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mailhog:
+        condition: service_started
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+      CACHE_BACKEND: memory
+      HTTP_ADDR: ":8080"
+      LOG_LEVEL: info
+      ENV: dev
+      MAIL_PROVIDER: smtp
+      SMTP_ADDR: "mailhog:1025"
+      MAIL_FROM: "noreply@ggscale.dev"
+      DASHBOARD_DISABLED: "false"
+      DASHBOARD_COOKIE_SECURE: "false"
+      DASHBOARD_BOOTSTRAP_TOKEN_FILE: /run/ggscale/bootstrap.token
+    secrets:
+      - database_url
+    volumes:
+      - ../../data:/run/ggscale
     ports:
       - "8080:8080"
-    command:
-      - "--port=8080"
-      - "--ttl=30s"
-    restart: unless-stopped
+      - "3001:8080"
+    logging: *default-logging
 
-  # --- Game server registered with master ---
-  server:
+  doomerang-server:
     build:
-      context: .
-      dockerfile: server/Dockerfile
-    ports:
-      - "7373:7373"
+      # Parent of both ggscale/ and ggscale-go/ so the SDK and the
+      # game-server source are visible in the build context.
+      context: ../../..
+      dockerfile: ggscale/work/doomerang-mp/server/Dockerfile
     depends_on:
-      master:
+      ggscale-server:
         condition: service_started
+    environment:
+      GGSCALE_URL: http://ggscale-server:8080
+      GGSCALE_SECRET_KEY_FILE: /run/secrets/ggscale_secret_key
+      GGSCALE_LEADERBOARD_ID: ${GGSCALE_LEADERBOARD_ID:-}
+    secrets:
+      - ggscale_secret_key
     command:
       - "--port=7373"
       - "--tickrate=20"
       - "--name=Test Server"
       - "--version=0.1.0"
-      - "--master=http://master:8080"
-      - "--address=localhost:7373"
+      - "--address=${DOOMERANG_PUBLIC_ADDRESS:-localhost:7373}"
       - "--maxplayers=4"
-    # No restart — allows testing TTL expiry by stopping this container
-
-  # Second game server to test browse list with multiple entries
-  server-2:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
     ports:
-      - "7374:7374"
-    depends_on:
-      master:
-        condition: service_started
-    command:
-      - "--port=7374"
-      - "--tickrate=20"
-      - "--name=Open Server"
-      - "--master=http://master:8080"
-      - "--address=localhost:7374"
-      - "--maxplayers=4"
-    profiles:
-      - testing
+      - "7373:7373"
+    logging: *default-logging
 
-  # --- Cross-compilation (existing) ---
+  # Cross-compilation helper retained from the previous compose. Not
+  # part of the runtime stack — invoke explicitly with --profile build.
   build-linux:
     image: golang:trixie
     working_dir: /app
@@ -66,4 +161,5 @@ services:
       - build
 
 volumes:
+  postgres-data:
   go-cache:

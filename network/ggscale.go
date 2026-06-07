@@ -1,6 +1,8 @@
 package network
 
 import (
+	"context"
+	"fmt"
 	"sync"
 
 	ggscale "github.com/automoto/ggscale-go"
@@ -39,4 +41,25 @@ func SharedGgscale() (*ggscale.Client, int64) {
 	ggscaleMu.RLock()
 	defer ggscaleMu.RUnlock()
 	return sharedGgscaleClient, sharedLeaderboardID
+}
+
+// FindMatch is a convenience wrapper around ggscale matchmaking. It
+// creates a matchmaking ticket and blocks until the server assigns a
+// game server address. Returns the server address (e.g. "192.168.1.5:7777")
+// or an error if the context is cancelled first.
+func FindMatch(ctx context.Context, fleet, gameMode string) (string, error) {
+	ggscaleMu.RLock()
+	c := sharedGgscaleClient
+	ggscaleMu.RUnlock()
+	if c == nil {
+		return "", fmt.Errorf("ggscale not initialized")
+	}
+	ready, err := c.Matchmaker.RequestMatch(ctx, ggscale.MatchRequest{
+		Fleet:    fleet,
+		GameMode: gameMode,
+	})
+	if err != nil {
+		return "", fmt.Errorf("matchmaking failed: %w", err)
+	}
+	return ready.Address, nil
 }

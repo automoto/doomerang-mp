@@ -55,8 +55,10 @@ type Client struct {
 	scoreCh       chan messages.ScoreEvent
 	lobbyUpdateCh chan messages.LobbyUpdate
 
-	// ggscale integration. nil when GGSCALE_API_KEY is unset, in which
-	// case Login is a no-op and SubmitMyScore returns nil silently.
+	// ggscale integration. nil when GGSCALE_PUBLISHABLE_KEY is unset.
+	// The session token is forwarded to the dedicated game server via
+	// JoinRequest.GgscaleSessionToken so the server can submit scores
+	// on the player's behalf at match end.
 	ggscale              *ggscale.Client
 	ggscaleLeaderboardID int64
 }
@@ -95,10 +97,17 @@ func (c *Client) Connect(address, version, playerName, level string) {
 		c.state = StateConnected
 		c.mu.Unlock()
 
+		var ggscaleToken string
+		if gg, _ := SharedGgscale(); gg != nil {
+			if sess := gg.Session(); sess != nil {
+				ggscaleToken = sess.AccessToken
+			}
+		}
 		payload, err := router.Serialize(messages.JoinRequest{
-			Version:    version,
-			PlayerName: playerName,
-			Level:      level,
+			Version:             version,
+			PlayerName:          playerName,
+			Level:               level,
+			GgscaleSessionToken: ggscaleToken,
 		})
 		if err != nil {
 			c.setError(fmt.Errorf("failed to serialize join request: %w", err))
@@ -386,18 +395,14 @@ func (c *Client) DrainLobbyUpdates() []messages.LobbyUpdate {
 	return drainChan(c.lobbyUpdateCh)
 }
 
-// SubmitMyScore posts the local player's score to the configured ggscale
-// leaderboard. No-op when ggscale was not configured (i.e. when
-// SetSharedGgscale was never called or was called with a nil client).
-func (c *Client) SubmitMyScore(ctx context.Context, score int64) error {
-	c.mu.RLock()
-	gg := c.ggscale
-	lb := c.ggscaleLeaderboardID
-	c.mu.RUnlock()
-	if gg == nil || lb == 0 {
-		return nil
-	}
-	return gg.Leaderboards.Submit(ctx, lb, score)
+// SubmitMyScore is a no-op retained for compatibility. Score submission
+// moved to the dedicated game server, which submits via SubmitFor with
+// its secret-tier API key — publishable keys are blocked from
+// leaderboard writes server-side. The client's session token rides in
+// JoinRequest.GgscaleSessionToken so the server can submit on the
+// player's behalf.
+func (c *Client) SubmitMyScore(_ context.Context, _ int64) error {
+	return nil
 }
 
 func drainChan[T any](ch chan T) []T {

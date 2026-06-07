@@ -23,7 +23,7 @@ require (
 // Local ggscale-go SDK checkout. Until the SDK is tagged and pushed to
 // github.com/automoto/ggscale-go, depend on the local clone. Adjust this
 // path if your ggscale-go checkout lives elsewhere.
-replace github.com/automoto/ggscale-go => ../../../ggscale-go
+replace github.com/automoto/ggscale-go => ../../../ggscale/sdk-go
 
 require (
 	github.com/disintegration/imaging v1.6.2 // indirect

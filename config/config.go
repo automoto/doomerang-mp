@@ -392,11 +392,10 @@ type LevelCompleteConfig struct {
 // NetworkConfig contains network/multiplayer configuration
 type NetworkConfig struct {
 	DefaultPort     string
-	DefaultAddress  string
-	ConnectTimeout  int
-	GameVersion     string
-	MoveSpeed       float64
-	MasterServerURL string
+	DefaultAddress string
+	ConnectTimeout int
+	GameVersion    string
+	MoveSpeed      float64
 }
 
 // NetcodeConfig contains client-side prediction and reconciliation settings.
@@ -978,12 +977,11 @@ func init() {
 
 	// Network Config
 	Network = NetworkConfig{
-		DefaultPort:     "7373",
-		DefaultAddress:  "localhost",
-		ConnectTimeout:  60 * 5,
-		GameVersion:     "0.1.0",
-		MoveSpeed:       3.0,
-		MasterServerURL: "http://localhost:8080",
+		DefaultPort:    "7373",
+		DefaultAddress: "localhost",
+		ConnectTimeout: 60 * 5,
+		GameVersion:    "0.1.0",
+		MoveSpeed:      3.0,
 	}
 
 	// Netcode Config (client-side prediction with position smoothing)
