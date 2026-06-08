@@ -17,6 +17,20 @@ TAG                  ?= latest
 # Override DOCKER_BUILD_CONTEXT to point at a staging directory that
 # matches this layout if your checkout differs.
 DOCKER_BUILD_CONTEXT ?= ../../..
+# Resolve docker even when make's subshell doesn't inherit the user's
+# interactive PATH — Docker Desktop on macOS installs the CLI under
+# /Applications/Docker.app/Contents/Resources/bin which is rarely on PATH
+# for non-interactive shells. Override DOCKER=/path/to/docker if neither
+# is found.
+DOCKER ?= $(shell command -v docker 2>/dev/null \
+	|| ls /opt/homebrew/bin/docker 2>/dev/null \
+	|| ls /usr/local/bin/docker 2>/dev/null \
+	|| ls /Applications/Docker.app/Contents/Resources/bin/docker 2>/dev/null \
+	|| echo docker)
+# Docker spawns credential helpers (docker-credential-desktop,
+# docker-credential-osxkeychain) as siblings of the docker binary, so
+# the helper's directory must be on PATH when docker runs.
+DOCKER_BIN_DIR := $(dir $(DOCKER))
 
 .PHONY: lint run build basic-test server run-server \
 	build-mac build-mac-intel build-windows build-linux build-web build-all \
@@ -100,10 +114,10 @@ deploy-all: deploy-mac deploy-windows deploy-web
 # Both `:latest` and `:$(TAG)` are pushed when TAG is overridden.
 
 docker-image:
-	docker build \
+	PATH="$(DOCKER_BIN_DIR):$$PATH" $(DOCKER) build \
 		-f server/Dockerfile \
 		-t $(DOCKER_IMAGE):$(TAG) \
 		$(DOCKER_BUILD_CONTEXT)
 
 docker-push: docker-image
-	docker push $(DOCKER_IMAGE):$(TAG)
+	PATH="$(DOCKER_BIN_DIR):$$PATH" $(DOCKER) push $(DOCKER_IMAGE):$(TAG)
