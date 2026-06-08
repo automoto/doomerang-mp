@@ -7,7 +7,7 @@
 # docker-compose.yml). The directory layout inside the image mirrors the
 # host so the relative `replace` directives in server/go.mod resolve
 # unchanged.
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26.4-alpine AS builder
 WORKDIR /code
 COPY ggscale-go/ /code/ggscale-go/
 COPY ggscale/work/doomerang-mp/ /code/ggscale/work/doomerang-mp/

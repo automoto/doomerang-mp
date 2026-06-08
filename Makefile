@@ -5,10 +5,24 @@ DIST_DIR := dist
 ITCH_USER := gamekaizen
 ITCH_GAME := doomerang
 
+# Docker Hub: buildwrangler/doomerang-server — use `make docker-push TAG=v0.1.0`
+# (requires `docker login` to Docker Hub).
+DOCKER_IMAGE         ?= buildwrangler/doomerang-server
+TAG                  ?= latest
+# server/Dockerfile expects a build context whose root contains
+# `ggscale-go/` and `ggscale/work/doomerang-mp/` as siblings (see the
+# COPY directives at the top of the Dockerfile). The default below
+# points at the parent of `ggscale/` in the standard local-dev layout
+# (`<root>/ggscale-go/`, `<root>/ggscale/work/doomerang-mp/Makefile`).
+# Override DOCKER_BUILD_CONTEXT to point at a staging directory that
+# matches this layout if your checkout differs.
+DOCKER_BUILD_CONTEXT ?= ../../..
+
 .PHONY: lint run build basic-test server run-server \
 	build-mac build-mac-intel build-windows build-linux build-web build-all \
 	deploy-mac deploy-mac-intel deploy-windows deploy-linux deploy-web deploy-all \
-	clean-dist
+	clean-dist \
+	docker-image docker-push
 
 lint:
 	golangci-lint run
@@ -78,3 +92,18 @@ deploy-web:
 
 deploy-all: deploy-mac deploy-windows deploy-web
 	@echo "Deployed to itch.io: mac, windows, linux, web"
+
+# ─── Docker Hub image (doomerang-server) ────────────────────────────────
+#
+# Built manually on a developer machine. CI never publishes images.
+# Default tag is `latest`; pin to a release by passing TAG=vX.Y.Z.
+# Both `:latest` and `:$(TAG)` are pushed when TAG is overridden.
+
+docker-image:
+	docker build \
+		-f server/Dockerfile \
+		-t $(DOCKER_IMAGE):$(TAG) \
+		$(DOCKER_BUILD_CONTEXT)
+
+docker-push: docker-image
+	docker push $(DOCKER_IMAGE):$(TAG)
