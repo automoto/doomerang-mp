@@ -86,6 +86,48 @@ it's been the default since Quake.
 
 ---
 
+## Transport
+
+doomerang-server uses **WebSocket** (TCP). The transport choice is set
+in `server/core/server.go`:
+
+```go
+s.transport = transports.NewWsServerTransport(port, "", nil)
+```
+
+WebSocket is TCP, which means doomerang inherits TCP head-of-line
+blocking: if a segment is lost, every subsequent segment waits for the
+retransmit. At 60 Hz that can be 3–12 ticks of stutter for everyone
+behind the lost packet. For a 2–4 player game with short matches on
+typical home connections this is rarely noticeable; for a 32-player
+shooter on bad mobile it would be.
+
+We pick WebSocket anyway because **browser playability is a hard
+requirement**. Browsers can't open raw UDP sockets — the only
+alternatives that work in a browser tab are WebSocket (TCP) and
+WebRTC DataChannels (UDP-like, but heavy: needs TURN/ICE/SDP
+machinery). For v1, WebSocket is the right trade.
+
+This is doomerang's choice. **It is not a platform constraint.** The
+ggscale BaaS supports both transports as a first-class concept:
+each game ships its own Fleet manifest declaring its protocol, and
+the matchmaker surfaces it back to the client via `protocol_hint`.
+A future native-only PC/Xbox game on this platform would use
+`protocol: UDP` and a raw-UDP server binary with no changes to
+ggscale.
+
+If at some future point we want UDP-quality feel for native doomerang
+players (Steam release, ranked mode), the upgrade path is **dual
+transport** — one pod listening on both ports (`protocol: TCPUDP`),
+WebSocket for browser players, UDP for native. The `netcomponents`
+abstraction is already in place; adding a second listener is mostly
+plumbing. We won't pull that lever until measurement says we should.
+
+See `docs/fleet-onboarding.md` in the ggscale repo for the platform
+view of transport choice across games.
+
+---
+
 ## Same binary, two modes
 
 `doomerang-server` doesn't care whether it's running under Agones or in
@@ -202,6 +244,11 @@ Agones-watcher-then-SIGTERM orderings both work.
 
 ## Further reading
 
+- `docs/fleet-onboarding.md` in the ggscale repo — the platform view
+  of how any new game integrates: responsibilities split, manifest
+  shape, transport choice (TCP/UDP/TCPUDP), scale notes, and a
+  common-mistakes checklist. doomerang-server is one example of the
+  pattern described there.
 - Agones architecture: <https://agones.dev/site/docs/overview/>
 - Agones GameServer SDK guide: <https://agones.dev/site/docs/guides/client-sdks/>
 - ggscale's agones backend: `internal/fleet/agones/backend.go` in the ggscale repo.
